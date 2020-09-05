@@ -1,0 +1,444 @@
+---
+title: "HIV-1 protease cleavage site in-silico prediction"
+author: "Julio M. Fernandez"
+date: "28/10/2017"
+output:
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include = FALSE, results = 'hide'}
+knitr::opts_chunk$set(echo = TRUE, tidy = TRUE, tidy.opts = list(width.cutoff=65))
+```
+
+```{r, echo=FALSE, include=FALSE}
+install.packages('caret', repos = "http://cran.us.r-project.org")
+install.packages('e1071', repos = "http://cran.us.r-project.org")
+install.packages('class', repos = "http://cran.us.r-project.org")
+install.packages('gmodels', repos = "http://cran.us.r-project.org")
+install.packages('formatR', repos = "http://cran.us.r-project.org")
+install.packages('ROCR', repos = "http://cran.us.r-project.org")
+```
+
+```{r, echo=FALSE, include=FALSE}
+library('caret')
+library('e1071')
+library('class')
+library('gmodels')
+library('formatR')
+library('ROCR')
+```
+
+##1. Algorithm k-NN
+
+The k-NN algorithm is a classification method that intents to match, or classify, an unknown subject to a category or label based on its similarity to other related and well known elements. k-nn is a classification by similarity algorithm. The total numbers of elements to consider when classifying is given by k. 
+
+Comparison between unknown and known subjects is carried out by distance, where a set of numerical parameters from both subjects are compared using a series of methods. 
+
+Distance calculation methods can use the Euclidian or Hamming methods, among others.The Euclidean method uses the quadratic pythagorean equation to calculate the direct distance between two points from a set of coordinates. The Hamming distance is used when comparing binary numbers and it is based in the direct count of common binary digits among numbers.
+
+| Strengths | Weakness |
+|-----------------------------------------------------------|------------------------------------|
+| * Simple and affective                                    | * It is not a model base procedure |
+| * Makes no assumptions about the distribution of the data | * Requires selection of k          |
+| * Fast training phase                                     | * Slow classification phase        |
+|                                                           | * Requires data processing         |
+
+##2. Article reading and analysis
+
+The related article can be found at:
+
+https://academic.oup.com/bioinformatics/article-lookup/doi/10.1093/bioinformatics/btu810
+
+##3. Orthogonal codification function
+
+For this section, a set of three functions have been created. Each one of them takes care of a specific step in the codification process. Splitting the solution to this problem in three methods or functions allows us to make use of the *lapply* function without occurring into custom *for* loops. 
+
+This first function will create a binary number of 20 digits and switch to "1" the position indicated by the parameter *x*. The function will return a 20 digit strings of zeros and ones (19+1).
+
+```{r}
+setActiveAminoAcidInBinaryMask <- function(x, n) {
+  mask <- rep(0, n)
+  mask[x] = 1
+  seq <- gsub(", ","",toString(mask))
+  
+  return (seq)
+  }
+```
+
+The next function will convert a given amino acid sequence into  binary sequence by using an amino acid sequence pattern. The function returns a list of string binary sequences.
+
+```{r}
+aminoAcidSequenceToBinary <- function (sequence, aminoAcidPattern) {
+  sequenceVector <- strsplit(sequence, '')[[1]]
+  n <- nchar(aminoAcidPattern)
+  aminoAcidPatternVector <- strsplit(aminoAcidPattern, '')[[1]]
+  
+  aminoAcidPositionInPatternVector <- match(sequenceVector, aminoAcidPatternVector)
+  bin <- lapply(aminoAcidPositionInPatternVector, setActiveAminoAcidInBinaryMask, n = n)
+  
+  return (bin)
+  }
+```
+
+This last function will convert a binary string into a "digit by digit" binary vector. It accepts an amino acid sequence and a pattern. It returns a vector with 20 elements, one per binary element in the sequence. This is our main method and entry point for amino acid to binary conversion.
+
+```{r}
+toOrthogonalCode <- function(x, aminoAcidPattern){
+  codec <- aminoAcidSequenceToBinary(x, aminoAcidPattern)
+  strCode <- paste(unlist(codec), collapse='')
+  y <- strsplit(strCode, '')[[1]]
+ 
+  return (as.numeric(y))
+}
+```
+
+##4. k-NN cassification script
+
+###a) Data reading
+
+We first load the data file into a *dataframe*, rename the labels and result column and turn the results into a more readable factor.
+
+```{r}
+impensData <- read.csv('impensData.txt', header = FALSE);
+impensData$V2 <- factor(impensData$V2, levels = c(-1, 1), labels = c('Uncleaved', 'Cleaved'))
+colnames(impensData) <- c('sequence', 'result')
+head(impensData)
+```
+
+###b) Orthogonal codification
+
+From the sequence column of our main *dataframe*, we generate a coded matrix based on the orthogonal sequence algorithm developed in the previous step. 
+
+This is a two steps procedure where we first get a list of binary sequences from the algorithm and then transform the sequence list into a matrix.
+
+```{r}
+aminoAcidPattern <- "ARNDCQEGHILKMFPSTWYV"
+
+impensDataBinaryList <- lapply(as.vector(impensData$sequence), toOrthogonalCode, aminoAcidPattern = aminoAcidPattern)
+impensDatabinaryMatrix <- do.call(rbind, impensDataBinaryList)
+```
+
+We now merge the current data *dataframe* with the coded animo acid binary sequence (because of space constraints, a partial view of the final *dataframe* is displayed).
+
+```{r}
+impensData <- data.frame(impensData, impensDatabinaryMatrix)
+head(impensData[, 1:10])
+```
+
+Let's now take a look at the result column proportions.
+
+```{r}
+round(prop.table(table(impensData$result)) * 100, digits = 1)
+```
+
+Finally, we export the data into its own CSV file for further use.
+
+```{r}
+write.csv(impensData, file = 'orthoImpensData.csv')
+```
+
+###c) Generate training and testing data from main data set.
+
+In order to generate our training and testing data, we opted to use the *createDataPartition* function from the *caret* package. This function ensures that both data sets have a balanced number of positive and negative outcomes. We will also create a label variable per set with the outcome.
+
+```{r}
+p <- 0.67
+
+set.seed(123)
+in_train <- createDataPartition(impensData$result, p = p, list = FALSE)
+
+impensData_train <- impensData[in_train, ]
+impensData_train <- impensData_train[-c(1, 2)]
+
+impensData_test <- impensData[-in_train, ]
+impensData_test <- impensData_test[-c(1, 2)]
+
+impensData_train_labels <- impensData[in_train, 2]
+impensData_test_labels <- impensData[-in_train, 2]
+
+head(impensData_train[, 1:10])
+```
+
+###d) k-NN prediction test.
+
+The following function applies the k-NN algorithm to a set of testing and training data and a series of k values. It returns a *dataframe* with the prediction results per value of k.
+
+```{r}
+process_data_knn <- function(data_train, data_test, data_train_labels, k){
+  knn_results <- list()
+  for(k_index in k){
+    knn_results[[length(knn_results)+1]] <- knn(train = data_train, test = data_test, cl = data_train_labels, k = k_index, prob = TRUE)
+  }
+  predictions <- data.frame(knn_results)
+  colnames(predictions) <- k
+  
+  return(predictions)
+}
+```
+
+We now process our data for our set of k values.
+
+```{r}
+k <-  c(3, 5, 7, 11)
+
+impensData_predictions <- process_data_knn(impensData_train, impensData_test, impensData_train_labels, k)
+head(impensData_predictions)
+```
+
+###e) k-NN test analysis
+
+This first function generates a *CrossTable* report per prediction item stored in the prediction *dataset*.
+
+```{r}
+crossTableResults <- function(predictions, test_labels) {
+  for (i in names(predictions)) {
+    cat('---------------------- K =',i, '----------------------\n\n')
+    CrossTable(x = test_labels, y = predictions[[i]], prop.chisq = FALSE)
+    cat('\n\n\n')
+  } 
+}
+```
+
+The following function generates a confusion matrix report per prediction item stored in the prediction *dataset*.
+
+```{r}
+confusionSummary <- function(predictions, labels, positive){
+  for (i in names(predictions)) {
+    cat('---------------------- K =',i, '----------------------\n\n')
+    print(confusionMatrix(predictions[[i]], labels, positive = positive))
+    cat('\n\n\n')
+  }
+}
+```
+
+This function will generate a comparison table with estimators obtained from the confusion table.
+
+```{r}
+knnPerformanceSummary <- function(predictions, labels, positive) {
+  summary <- data.frame()
+  
+  for (i in names(predictions)) {
+    x <- confusionMatrix(predictions[[i]], labels, positive = positive)
+    
+    prob <- attr(predictions[[i]], "prob")
+    pred <- prediction(predictions = prob, labels)
+    perf.auc <- performance(pred, measure = "auc")
+    
+    tp = x[['table']][2,2]
+    tn = x[['table']][1,1]
+    fp = x[['table']][2,1]
+    fn = x[['table']][1,2]
+    
+    kappa =  round(x[['overall']]['Kappa'], 3)
+    accurary = round((tp+tn)/(tp+tn+fp+fn), 3)
+    error = round(1-accurary, 3)
+    sensitivity = round(tp/(tp+fn), 3)
+    specificity = round(tn/(tn+fp), 3)
+    precision = round(tp/(tp+fp), 3)
+    recall = round(tp/(tp+fn), 3)
+    f = round((2*precision*recall)/(recall+precision), 3)
+    auc = round(unlist(perf.auc@y.values), 3)
+    
+    d <- data.frame(i, tp, tn, fp, fn, kappa, accurary, error, sensitivity, specificity, precision, recall, f, auc)
+    summary <- rbind(summary, d)
+  }
+  
+  rownames(summary) <- names(predictions)
+  colnames(summary) <- c(
+    'k',
+    'TP',
+    'TN',
+    'FP',
+    'FN',
+    'kappa',
+    'Accurary',
+    'Error',
+    'Sensitivity',
+    'Specificity',
+    'Precision',
+    'Recall',
+    'F',
+    'AUC'
+    )
+  
+  return(summary)
+}
+```
+
+####I - CrossTable
+
+```{r}
+crossTableResults(impensData_predictions, impensData_test_labels)
+```
+
+####II - Confusion table
+
+```{r}
+confusionSummary(impensData_predictions, impensData_test_labels, 'Cleaved')
+```
+####III - ROC Analisys
+
+The following function will generate a ROC chart report per prediction.
+
+```{r}
+ROCAnalisys <- function(predictions, labels) {
+  par(mfrow=c(1,2))
+  for (i in names(predictions)) {
+    prob <- attr(predictions[[i]], "prob")
+    pred <- prediction(predictions = prob, labels)
+    perf.auc <- performance(pred, measure = "auc")
+    auc = round(unlist(perf.auc@y.values), 3)
+    
+    title = sprintf("ROC Curve k = %s", i)
+    subtitle = sprintf("AUC = %s", auc)
+    
+    pred <- prediction(predictions = prob, labels)
+    perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+    plot(perf, main = title, sub = subtitle, col = "blue", lwd = 3)
+    axis(side = 1, at = seq(0, 1, by = 0.2))
+    axis(side = 2, at = seq(0, 1, by = 0.2))
+    abline(a = 0, b = 1, lwd = 2, lty = 2)
+    cat('\n\n')
+    }
+  }
+```
+
+We now execute the ROC chart report.
+
+```{r}
+ROCAnalisys(impensData_predictions, impensData_test_labels)
+```
+
+####IV - Comparison table
+
+```{r}
+impensData_test_summary <-knnPerformanceSummary(impensData_predictions, impensData_test_labels, 'Cleaved')
+impensData_test_summary
+```
+
+####V - Conclusion
+
+Initially we can appreciate that there is a high rate of true positives for k=3. These true positive predictions decrease as k increases. Furthermore, the rate of false negatives also increases with k while the remaining two factors (true negatives and false positives) stay fixed for the most. This trend is also supported by the **accuracy** level.
+
+Moving forward in the comparison table, we can appreciate that the **kappa statistic** is very low in all cases. This is an indicator that the accuracy is not as trustful as expected since most of the predictions do not match the provided estimations. This could be a consequence of the high false negative results obtained throughout the procedure.
+
+This high false negative rate leads to a low **sensitivity** for all the values of k while the **specificity** remains high. This is again a sign of missleading uncleavege predictions. The model fails when predicting negative results while doing a better job with positive predictions. 
+
+The precision and recall rates tell us more of the same story. The high **precision** recalls for a great positive predictive capacity of the model while the low **recall** rate reflects that some of the positive predictions are not being properly identified as such. The low **F-value** obtained for all values of k clearly indicates an overall low performance rate for the model.
+
+On the other hand, the **ROC** charts and the **AUC** values are all within acceptable parameters for all values of k. This is an indicative of how good the model is when predicting positive cases. It is important to notice that, unlike the values cases discussed above, this rate seems to increase along with k.
+
+To conclude, we can say that at first sight a k=3 is an optimum value of k for this prediction based on the raw prediction values (low rate of false negative and false positives altogether). Nevertheless, a value of k=11 leads to a better AUC rate. Furthermore, we can say that, perhaps, the methodology used to solve this model may have lead to too many false negatives. Nevertheless, and because of the hight values of AUC, we can assert that the model is fairly acceptable for protein cleavage prediction.
+
+##5. k-NN classificator function (II)
+
+###a) Data reading
+
+We first read the new data from the *shillingData* file.
+
+```{r}
+schillingData <- read.csv('schillingData.txt', header = FALSE);
+schillingData$V2 <- factor(schillingData$V2, levels = c(-1, 1), labels = c('Uncleaved', 'Cleaved'))
+colnames(schillingData) <- c('sequence', 'result')
+head(schillingData)
+```
+
+###b) Orthogonal codification
+
+From the sequence column of our main *dataframe*, we generate a coded matrix based on the orthogonal sequence algorithm developed above. 
+
+This is a two steps procedure where we first get a list of binary sequences from the algorithm and then transform the sequence list into a matrix
+
+```{r}
+schillingData_binaryList <- lapply(as.vector(schillingData$sequence), toOrthogonalCode, aminoAcidPattern = aminoAcidPattern)
+schillingData_binaryMatrix <- do.call(rbind, schillingData_binaryList)
+```
+
+We now merge the current *dataframe* with our completed coded animo acid binary sequence.
+
+```{r}
+schillingData <- data.frame(schillingData, schillingData_binaryMatrix)
+head(schillingData[, 1:10])
+```
+
+Let's take a look at the result column proportions.
+
+```{r}
+round(prop.table(table(schillingData$result)) * 100, digits = 1)
+```
+
+Finally, we export the data into its own CSV file for further use.
+
+```{r}
+write.csv(schillingData, file = 'orthoSchillingData.csv')
+```
+
+###c)k-NN prediction test
+
+As with the previous exercise, we process the training schilling data by extracting the data parameters and the outcome or labels in different variables.
+
+```{r}
+schillingData_train <- schillingData[-c(1, 2)]
+schillingData_train_labels <- schillingData[, 2]
+head(schillingData_train[, 1:10])
+```
+
+In this step we create our testing data set by using the full content of the *impensData* data package.
+
+```{r}
+impensData_full_test <- impensData[-c(1, 2)]
+impensData_full_test_labels <- impensData[, 2]
+head(impensData_full_test[, 1:10])
+```
+
+Finally, we calculate our predictions based on the new training data.
+
+```{r}
+impensData_full_predictions <- process_data_knn(schillingData_train, impensData_full_test, schillingData_train_labels, k)
+head(impensData_full_predictions) 
+```
+###d) k-NN test analysis
+
+####I - CrossTable
+
+```{r}
+crossTableResults(impensData_full_predictions, impensData_full_test_labels)
+```
+
+####II - Consusion table
+
+```{r}
+confusionSummary(impensData_full_predictions, impensData_full_test_labels, 'Cleaved')
+```
+
+####III - ROC Analisys
+
+```{r}
+ROCAnalisys(impensData_full_predictions, impensData_full_test_labels)
+```
+
+####IV - Comparison table
+
+```{r}
+impensData_full_summary <- knnPerformanceSummary(impensData_full_predictions, impensData_full_test_labels, 'Cleaved')
+impensData_full_summary
+```
+
+####V - Conclusion
+
+For this study the number of false positives increases exponentially. We can say that the levels of false positives matches the positive predictions for low values of k and discards 50% of the true positives for high levels of k. This is very different than what we saw in the previous exercise with a reduced training data set. 
+
+Nevertheless, and because of the larger and increased number of true negatives, we are still able to keep a high **accuracy** level. It almost seems like that we have moved from a model with a great true positive prediction to an even better true negative prediction rate. Still, the **kappa statistic** remains within the same range (although a bit lower though) than before, showing there could be some misleading results in our predictions.
+
+The **sensitivity** and **specificity** remains within the same parameters that before, although lower in both cases. There are also too many false negatives in the predictions.
+
+The **precision** has fallen dramatically with this new training data set. This is justified by the large values of false positives obtained in relation with the true positives. More of the same happened with the **recall** value since all those false negatives were meant to be somewhere else. Once again, the **F-value** rate describes a very low performance of the prediction model.
+
+On the bright side, the **ROC** charts and **AUC** values are within acceptable parameters describing a decent predictive model when it comes to positive predictions. Nevertheless, the predictive performance is lower that before.
+
+I would say that, unless the previous exercise, this model works better under larger values of k (k=11 has the best AUC rate) but the overall performance and prediction rate has gone down. On the other hand, and by looking only at the change in false predictions, we can say that a value of k=7 keeps a perfect balance within the increase in the false negatives and the decrease in false positives
+
+## References
+Lantz, Brett. 2015. Machine Learning with R. Packt Publishing Ltd.
+

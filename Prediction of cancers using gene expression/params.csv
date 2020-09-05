@@ -1,0 +1,2 @@
+data_folder;data_file;class_file;pcaComponents_file;seed;train_percent;classes
+./data/;data.csv;class.csv;pcaComponents.csv;12345;0.67;EWS,BL,NB,RMS

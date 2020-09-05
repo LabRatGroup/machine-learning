@@ -1,0 +1,765 @@
+---
+title: "SisPorto 2.0 A Program for Automated Analysis of Cardiotocograms"
+author: "Julio M. Fernandez"
+date: "2/1/2018"
+output:
+  pdf_document:
+    keep_tex: yes
+    toc: yes
+    toc_depth: 3
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 3
+---
+
+```{r setup, include = FALSE, results = 'hide'}
+knitr::opts_chunk$set(comment = NULL, cache = TRUE, tidy = TRUE, tidy.opts = list(width.cutoff=60))
+```
+
+```{r packages, message=FALSE, echo=FALSE, warning=FALSE}
+libraries <- c("caret", "klaR", "C50", "dummies", "NeuralNetTools", "randomForest", "e1071", "gmodels", "ggplot2", "gridExtra")
+
+check.libraries <- is.element(libraries, installed.packages()[, 1]) == FALSE
+libraries.to.install <- libraries[check.libraries]
+
+if (length(libraries.to.install != 0)) {
+  install.packages(libraries.to.install)
+  }
+
+success <- sapply(libraries, require, quietly = FALSE, character.only = TRUE)
+if(length(success) != length(libraries)) {
+  stop("A package failed to return a success in require() function.")
+  }
+```
+
+##Dynamic parameter loading
+
+First at all, we load the parameters used along the study and that make the report a dynamic generated document. The loaded parameters are shown after the command execution.
+
+```{r paramsLoading}
+params <- read.csv("params.csv", sep =";", header = TRUE)
+
+params$metric <- paste(params$metric)
+params$trainControlMethod <- paste(params$trainControlMethod)
+
+
+grid.table(params, theme=ttheme_default(base_size = 7))
+```
+
+##Data loading and pre-processing
+We load the study data from the raw text file according to specifications. The initial data exploration shows no NA to take care of.
+
+```{r dataLoading}
+data.raw <- read.csv(file.path(params$data_folder, params$data_file), header=TRUE, sep = ";", dec = ",")
+anyNA(data.raw)
+```
+
+In order to prepare the data for the analysis, we must make some changes and transformations before we can fully proceed.
+
+First at all, we transform the *Tendency* factor field by utilizing only positive digits. We exchange the -1 factor for *left asymmetry* by 2.
+
+```{r tendencyRedefinition}
+data.raw$Tendency <- ifelse(data.raw$Tendency == -1, 2, data.raw$Tendency)
+```
+
+We also transform the *Tendency*, *Class* and *NSP* fields to behave as factors in our data frame.
+
+```{r numericToFactor}
+data.raw$Tendency <- as.factor(data.raw$Tendency)
+data.raw$CLASS <- as.factor(data.raw$CLASS)
+data.raw$NSP <- as.factor(data.raw$NSP)
+```
+
+For our main evaluation class *NSP* we exchange the numerical values for a descriptional and more meaningful factor.
+
+```{r labelLevelDefinition}
+levels(data.raw$NSP)[1] <- "Normal"
+levels(data.raw$NSP)[2] <- "Suspicious"
+levels(data.raw$NSP)[3] <- "Pathology"
+```
+
+Since the *Class* factor variable is strongly associated to the *NSP"* variable, we opt to remove it from our data. This line of code can be removed at any time if we wish to reinsert this variable in the analysis.
+
+```{r classRemoval}
+data.raw <- data.raw[, !(names(data.raw) %in% c("CLASS"))]
+```
+
+In order to work with mixed data (numerical and factorial data), we create new dummy (binomial) variables from all our factor variables but *NSP*. We transform the *Tendency* variable into three numerical binary variables.
+
+```{r dataDummieConvertion}
+data.raw.dummy <- dummy.data.frame(data.raw[, !(names(data.raw) %in% c("NSP"))])
+data.raw.dummy$NSP <- data.raw$NSP
+head(data.raw.dummy[,21:23])
+```
+
+The following table and chart displays a summary of our data distribution. It is clear that we must normalize the data before our models are created.
+
+```{r rawDataAnalysis}
+summary(data.raw)
+boxplot(data.raw,data.raw, main="Study Raw Data", col = "red")
+```
+
+In order for our models to have the same data distribution, we create a fixed range for our training and testing data.
+
+##Sample distribution
+```{r triningDataDistribution}
+set.seed(params$seed)
+data.inTrain <- createDataPartition(data.raw$NSP, p = params$trainingSet, list = FALSE)
+```
+
+##k-Nearest Neighbour
+
+Our fist analysis involves the K-Nearest Neighbor algorithm model.
+
+###1.Data transformation
+
+For this model we will be using the "dummy" data set with the binary factor transformation we applied in the previous step.
+
+```{r kNearestDataAssigment}
+data.knearest <- data.raw.dummy
+```
+
+We now create out training and testing data sets from the rows selected in previous steps.
+
+```{r kNearestTrainingAndTestData}
+data.knearest.training <- data.knearest[data.inTrain,]
+data.knearest.test <- data.knearest[-data.inTrain,]
+```
+
+###Model training
+
+The following table displays all the possible parameters we can alter in order to obtain a better model performance with our data. For the k-nearest algorithm, we can only modify the K factor.
+
+```{r kNearestModelParams}
+modelLookup("knn")
+```
+
+We recreate the model by using K values that range from 4 to 8. In addition, we use the re-sampling method specified in our initial parameter data frame. Our re-sampling parameter is `r params$trainControlMethod` with `r params$trainControlMethodRounds` repetitions. These parameters will be the same for all our models. In addition, the model is built using a standard normalization procedure.
+
+```{r kNearestModelTraining}
+set.seed(params$seed)
+data.knearest.model.ctrl <- trainControl(method = params$trainControlMethod, number = params$trainControlMethodRounds)
+data.knearest.model.grid <- expand.grid(k = seq(from = 4, to = 8, by = 1))
+data.knearest.model <- train(
+  NSP ~ ., 
+  data = data.knearest.training, 
+  method = "knn",
+  preProcess = c("range"),
+  trControl = data.knearest.model.ctrl,
+  tuneGrid = data.knearest.model.grid,
+  metric = params$metric
+  )
+```
+
+Our models summary for this algorithm is described below.
+
+```{r kNearestModelDescription}
+data.knearest.model
+```
+
+The optimal tune for our data is as described in the following table and complementary chart.
+
+```{r kNearestModelComparisson}
+data.knearest.model$bestTune
+
+plot(x = data.knearest.model$results$k, y = data.knearest.model$results[, params$metric], col = "blue", type = "o", xlab = "K Neighbors", ylab=params$metric)
+title(main = "Model Performance by K factor")
+```
+
+We now proceed with the model predictions for our test data.
+
+###Prediction and evaluation
+```{r kNearestPrediction}
+set.seed(params$seed)
+data.knearest.model.prediction <- predict(data.knearest.model, data.knearest.test)
+data.knearest.model.confusionMatrix <- confusionMatrix(data.knearest.model.prediction, data.knearest.test$NSP)
+data.knearest.model.confusionMatrix
+```
+
+##Naive Bayes
+
+The following algorithm is the Naive Bayes algorithm.
+
+###1.Data transformation
+
+For this model, we will be using the raw data set. For this algorithm to work we need to transform our numeric data into factors, which demands for the already existing factorial data not to be transformed into binary data.
+
+```{r naiveBayesDataAssigment}
+data.nb <- data.raw
+```
+
+Next we transform the numeric data into factors by using a factor conversion value of `r params$factorConversionRange`. This will divide our normalized data into `r round(100/params$factorConversionRange)` different factors.
+
+```{r naiveBayesFactorConversion}
+normalize <- function(x) {
+  return((x - min(x)) / (max(x) - min(x)))
+}
+
+roundInt <- function(x) {
+  n <- params$factorConversionRange
+  round(x/n)*n
+}
+
+data.nb <- data.nb[, !(names(data.nb) %in% c("NSP", "Tendency"))]
+data.nb <- as.data.frame(lapply(data.nb, normalize))
+data.nb <- data.nb*100
+data.nb <- as.data.frame(lapply(data.nb, as.integer))
+data.nb <- as.data.frame(lapply(data.nb, roundInt))
+data.nb$NSP <- data.raw$NSP
+data.nb <- as.data.frame(lapply(data.nb, as.factor))
+head(data.nb)
+```
+
+Specific training and testing data is created for this model.
+
+```{r naiveBayesTrainingAndTestData}
+data.nb.training <- data.nb[data.inTrain,]
+data.nb.test <- data.nb[-data.inTrain,]
+```
+
+###Model training
+
+To create this model, we make use of the "naiveBayes" function which does a better work with zero variance factors than caret. Since "naiveBayes" lacks of a multiple model evaluation performance comparison, we create as many models as Laplace values we wish to test.
+
+```{r naiveBayesModelTraining}
+set.seed(params$seed)
+data.nb.model <- list()
+lp <- seq(from = 1, to = 20, by = 1)
+for(n in lp){
+  data.nb.model[[n]] <- naiveBayes(data.nb.training[, !(names(data.nb.training) %in% c("NSP"))], data.nb.training$NSP, laplace = n)
+}
+```
+
+###Prediction and evaluation
+
+We now proceed to evaluate our multiple models.
+
+```{r naiveBayesPrediction}
+set.seed(params$seed)
+data.nb.model.prediction <- list()
+data.nb.model.confusionMatrix <- list()
+for(n in lp){
+  data.nb.model.prediction[[n]] <- predict(data.nb.model[[n]], data.nb.test[, !(names(data.nb.test) %in% c("NSP"))])
+  data.nb.model.confusionMatrix[[n]] <- confusionMatrix(data.nb.model.prediction[[n]], data.nb.test$NSP)
+}
+```
+
+```{r naiveBayesModelCompasisson}
+data.nb.model.confusionMatrix.y <- c()
+for(n in lp){
+  data.nb.model.confusionMatrix.y <- cbind(data.nb.model.confusionMatrix.y,data.nb.model.confusionMatrix[[n]]$overall[params$metric])
+}
+
+plot(x = lp, y = data.nb.model.confusionMatrix.y, col = "blue", type = "o", xlab = "Laplace Estimator", ylab=params$metric)
+title(main = "Model Performance by Laplace Estimator")
+```
+
+Our best Laplace value is estimated as `r which.max(data.nb.model.confusionMatrix.y)`. Let's summarize the model performance over the testing data.
+
+```{r naiveBayesModelDescription}
+t <- data.nb.model.confusionMatrix[[which.max(data.nb.model.confusionMatrix.y)]]
+data.nb.model.confusionMatrix.optimum <- t
+data.nb.model.confusionMatrix.optimum
+```
+##Artificial Neural Network
+
+###1.Data transformation
+
+For the Neural Network algorithm we will be using the dummy transformed data. This will allow us to work with a full numeric data frame.
+
+```{r neuralDataAssigment}
+data.neural <- data.raw.dummy
+```
+
+For this algorithm we will be using two different tuning parameters, these are the size and the decay.
+
+###Model training
+
+```{r neuralModelParameters}
+modelLookup("nnet")
+```
+
+We build the training and testing models.
+
+```{r neuralTrainingAndTestData}
+data.neural.training <- data.neural[data.inTrain,]
+data.neural.test <- data.neural[-data.inTrain,]
+```
+
+The model is built using the standard re-sampling method and rounds. For the tuning parameter we will be using sizes values from 1 to 5 and decay values that range from 0.1 to 0.5 with 0.1 increments. A standard normalization procedure is included in the model definition.
+
+```{r neuralModelTraining}
+set.seed(params$seed)
+data.neural.model.ctrl <- trainControl(method = params$trainControlMethod, number = params$trainControlMethodRounds)
+data.neural.model.grid <- expand.grid(size = seq(from = 1, to = 5, by = 1), decay = seq(from = 0.1, to = 0.5, by = 0.1))
+data.neural.model <- train(
+  NSP ~ ., 
+  data = data.neural.training, 
+  method = "nnet",
+  trControl = data.neural.model.ctrl,
+  tuneGrid = data.neural.model.grid,
+  preProcess = c("range"),
+  metric = params$metric,
+  trace = FALSE
+  )
+```
+
+Our models summary for this algorithm is described below.
+
+```{r neuralModelDescription}
+data.neural.model
+```
+
+The following diagram displays our resultant neural model.
+
+```{r neuralModelDisplay}
+plotnet(data.neural.model, alpha = 0.6, rel_rsc=1, circle_col = "grey", bord_col = "blue", pos_col = "blue", max_sp = TRUE, cex_val = 0.7)
+```
+
+The best chosen tune up values for the final model are:
+
+```{r neuralTuneValues}
+data.neural.model$bestTune
+```
+
+The following plot displays how the `r params$metric` values obtained  along with the tune up parameters of size and decay. The size parameter is defined in the x axis, while the best decay value for each size group is labeled along with the plot dots. 
+
+```{r neuralModelComparisson}
+
+data.neural.model.metric.decay <- c()
+data.neural.model.metric.decay.labels <- c()
+data.neural.model.levels.decay <- levels(as.factor(data.neural.model$results$decay))
+data.neural.model.levels.size <- levels(as.factor(data.neural.model$results$size))
+
+for(n in data.neural.model.levels.size){
+  data.neural.model.metric.decay[n] <- max(data.neural.model$results[, params$metric][as.factor(data.neural.model$results$size) == n])
+  
+  t <- data.neural.model$results$decay[data.neural.model$results$size == n & data.neural.model$results[, params$metric] == data.neural.model.metric.decay[n]]
+  data.neural.model.metric.decay.labels[n] <- t
+}
+
+data.neural.model.yAxisRange = c(min(data.neural.model$results[,params$metric]), max(data.neural.model$results[,params$metric]))
+
+plot(x = data.neural.model.levels.size, y = data.neural.model.metric.decay, col = "blue", type = "o", xlab = "Size", ylab=params$metric, ylim = data.neural.model.yAxisRange )
+title(main = "Model Performance by size and decay values")
+text(x = data.neural.model.levels.size, y = data.neural.model.metric.decay, data.neural.model.metric.decay.labels, pos=1)
+```
+
+###Prediction and evaluation
+
+The following table summarizes the prediction performance for our model.
+
+```{r neuralPrediction}
+set.seed(params$seed)
+data.neural.model.prediction <- predict(data.neural.model, data.neural.test)
+data.neural.model.confusionMatrix <- confusionMatrix(data.neural.model.prediction, data.neural.test$NSP)
+data.neural.model.confusionMatrix
+```
+
+##Support Vector Machine
+
+For the Support Vector Machine algorithm, we will create a linear and a radial SVM model.
+
+###1.Data transformation
+
+For the linear SVM we will be using our dummy binary data.
+
+```{r svmDataAssigment}
+data.svm <- data.raw.dummy
+```
+
+We generate the training and testing data.
+
+```{r svmTrainingAndTestData}
+data.svm.training <- data.svm[data.inTrain,]
+data.svm.test <- data.svm[-data.inTrain,]
+```
+
+###Model training
+
+For the lineal SVM model there is only one parameter to tune up for model optimization.
+
+####SVM Linear
+```{r svmModelParameters}
+modelLookup("svmLinear")
+```
+
+Once again, we create our model with the standard re-sampling process and a C value that oscillates from 1 to 10. A normalization process was also included in the model construction process.
+
+```{r svmModelEvaluation}
+set.seed(params$seed)
+data.svm.linear.model.ctrl <- trainControl(method = params$trainControlMethod, number = params$trainControlMethodRounds)
+data.svm.linear.model.grid <- expand.grid(C = seq(from = 1, to = 10, by = 1))
+data.svm.linear.model <- train(
+  NSP ~ ., 
+  data = data.svm.training, 
+  method = "svmLinear",
+  trControl = data.svm.linear.model.ctrl,
+  tuneGrid = data.svm.linear.model.grid,
+  preProcess = c("range"),
+  metric = params$metric,
+  trace = FALSE
+  )
+```
+
+Our models summary for this algorithm is described below.
+
+```{r svmModelDescription}
+data.svm.linear.model
+```
+
+The following parameters were selected to construct the best model.
+
+```{r}
+data.svm.linear.model$bestTune
+```
+
+The following chart displays the changes in model performance for different values of C.
+
+```{r svmModelComparissonLineal}
+plot(x = data.svm.linear.model$results$C, y = data.svm.linear.model$results[, params$metric], col = "blue", type = "o", xlab = "Cost", ylab=params$metric)
+title(main = "Model Performance by Cost")
+```
+
+###Prediction and evaluation
+
+The model prediction can be explained by the following confusion matrix summary.
+
+```{r svmModelPrediction}
+set.seed(params$seed)
+data.svm.linear.model.prediction <- predict(data.svm.linear.model, data.svm.test)
+data.svm.linear.model.confusionMatrix <- confusionMatrix(data.svm.linear.model.prediction, data.svm.test$NSP)
+data.svm.linear.model.confusionMatrix
+```
+
+####SVM Radial
+
+For the radial SVM model, we can tune up the following parameters for a better model performance.
+
+```{r svmRadialModelParameters}
+modelLookup("svmRadial")
+```
+
+The model is built using the same data used for the linear SVM algorithm. The C and the sigma tune up values oscillates from 1 to 10 for the cost and the sigma variables.
+
+```{r svmRadialModelEvaluation}
+set.seed(params$seed)
+data.svm.radial.model.ctrl <- trainControl(method = params$trainControlMethod, number = params$trainControlMethodRounds)
+data.svm.radial.model.grid <- expand.grid(C = seq(from = 1, to = 10, by = 2),sigma = seq(from = 1, to = 10, by = 2))
+data.svm.radial.model <- train(
+  NSP ~ ., 
+  data = data.svm.training, 
+  method = "svmRadial",
+  trControl = data.svm.radial.model.ctrl,
+  tuneGrid = data.svm.radial.model.grid,
+  preProcess = c("range"),
+  metric = params$metric,
+  trace = FALSE
+  )
+```
+
+Our models summary for this algorithm is described below.
+
+```{r svmRadialModelDescription}
+data.svm.radial.model
+```
+
+The following chart displays the models performance for all the values of C and sigma used in the model generation process. The sigma values are displayed as the best sigma value for each set of C values.
+
+```{r svmRadialModelComparisson}
+data.svm.radial.model.metric.sigma <- c()
+data.svm.radial.model.metric.sigma.labels <- c()
+data.svm.radial.model.levels.sigma <- levels(as.factor(data.svm.radial.model$results$sigma))
+data.svm.radial.model.levels.C <- levels(as.factor(data.svm.radial.model$results$C))
+
+for(n in data.svm.radial.model.levels.C){
+  data.svm.radial.model.metric.sigma[n] <- max(data.svm.radial.model$results[, params$metric][as.factor(data.svm.radial.model$results$C) == n])
+  
+  t <- data.svm.radial.model$results$sigma[data.svm.radial.model$results$C == n & data.svm.radial.model$results[, params$metric] == data.svm.radial.model.metric.sigma[n]]
+  data.svm.radial.model.metric.sigma.labels[n] <- t
+}
+
+data.svm.radial.model.yAxisRange = c(min(data.svm.radial.model$results[,params$metric]), max(data.svm.radial.model$results[,params$metric]))
+
+plot(x = data.svm.radial.model.levels.C, y = data.svm.radial.model.metric.sigma, col = "blue", type = "o", xlab = "C", ylab=params$metric, ylim = data.svm.radial.model.yAxisRange )
+title(main = "Model Performance by C and sigma values")
+text(x = data.svm.radial.model.levels.C, y = data.svm.radial.model.metric.sigma, data.svm.radial.model.metric.sigma.labels, pos=1)
+```
+
+The best parameters for the radial SVM model performance are described on the following table.
+
+```{r}
+data.svm.radial.model$bestTune
+```
+
+###Prediction and evaluation
+
+The following confusion matrix data shows the result of the prediction performed on the testing data for the best model.
+
+```{r svmRadialModelPrediction}
+set.seed(params$seed)
+data.svm.radial.model.prediction <- predict(data.svm.radial.model, data.svm.test)
+data.svm.radial.model.confusionMatrix <- confusionMatrix(data.svm.radial.model.prediction, data.svm.test$NSP)
+data.svm.radial.model.confusionMatrix
+```
+
+##Decision Tree
+
+###1.Data transformation
+
+For the Decision Tree algorithm procedure we also use the dummy data set where all the factor variables were substituted by binary numerical data.
+
+```{r c5DataAsigment}
+data.c5 <- data.raw.dummy
+```
+
+We build the training and testing data.
+
+```{r c5TrainingAndDataAssigment}
+data.c5.training <- data.c5[data.inTrain,]
+data.c5.test <- data.c5[-data.inTrain,]
+```
+
+###Model training
+
+For this algorithm there are three variables we can tune for model performance.
+
+```{r c5ModelParams}
+modelLookup("C5.0")
+```
+
+We now build the models for different values of trials, model and winnow. As expected, we use a standard data normalization process and apply the same re-sampling parameters as before.
+
+```{r c5ModelTraining}
+set.seed(params$seed)
+data.c5.model.ctrl <- trainControl(method = params$trainControlMethod, number = params$trainControlMethodRounds)
+data.c5.model.grid <- expand.grid(winnow = c(FALSE, TRUE), trials = seq(from = 1, to = 30, by = 5), model = c("rules", "tree"))
+data.c5.model <- train(
+  NSP ~ ., 
+  data = data.c5.training, 
+  method = "C5.0",
+  preProcess = c("range"),
+  trControl = data.c5.model.ctrl,
+  tuneGrid = data.c5.model.grid,
+  metric = params$metric
+  )
+```
+
+The created models summary are described below.
+
+```{r c5ModelDescription}
+data.c5.model
+```
+
+The tune up values selected to create our best model are:
+
+```{r}
+data.c5.model$bestTune
+```
+
+The following plot displays models performance for different values of trials, model and winnow. The winnow values are described as labels for each set of trial values. A different chart is drawn to display the best model value per set of trial values.
+
+```{r c5ModelComparissonRules}
+data.c5.model.metric.winnow.model.rules <- c()
+data.c5.model.metric.winnow.model.rules.labels <- c()
+
+data.c5.model.metric.winnow.model.tree <- c()
+data.c5.model.metric.winnow.model.tree.labels <- c()
+
+data.c5.model.levels.trials <- levels(as.factor(data.c5.model$results$trials))
+data.c5.model.levels.winnow <- levels(as.factor(data.c5.model$results$winnow))
+data.c5.model.levels.model <- levels(as.factor(data.c5.model$results$model))
+
+for(n in data.c5.model.levels.trials){
+  data.c5.model.metric.winnow.model.rules[n] <- max(data.c5.model$results[,params$metric][as.factor(data.c5.model$results$trials) == n & data.c5.model$results$model == "rules"])
+  
+ t <- data.c5.model$results$winnow[data.c5.model$results$trials == n & data.c5.model$results[, params$metric] == data.c5.model.metric.winnow.model.rules[n] & data.c5.model$results$model == "rules"]
+  data.c5.model.metric.winnow.model.rules.labels[n] <- t
+  
+   t <- max(data.c5.model$results[,params$metric][as.factor(data.c5.model$results$trials) == n & data.c5.model$results$model == "tree"])
+   data.c5.model.metric.winnow.model.tree[n] <- t
+  
+ t <- data.c5.model$results$winnow[data.c5.model$results$trials == n & data.c5.model$results[, params$metric] == data.c5.model.metric.winnow.model.tree[n] & data.c5.model$results$model == "tree"]
+  data.c5.model.metric.winnow.model.tree.labels[n] <- t
+}
+
+data.c5.model.metric.yAxisRange = c(min(data.c5.model$results[,params$metric]), max(data.c5.model$results[,params$metric]))
+
+plot(x = data.c5.model.levels.trials, y = data.c5.model.metric.winnow.model.rules, col = "blue", type = "o", xlab = "Size", ylab=params$metric, ylim = data.c5.model.metric.yAxisRange )
+text(x = data.c5.model.levels.trials, y = data.c5.model.metric.winnow.model.rules, data.c5.model.metric.winnow.model.rules.labels, pos=1, cex=0.8)
+par(new=TRUE)
+plot(x = data.c5.model.levels.trials, y = data.c5.model.metric.winnow.model.tree, col = "red", type = "o", xlab = "Size", ylab=params$metric, ylim = data.c5.model.metric.yAxisRange )
+text(x = data.c5.model.levels.trials, y = data.c5.model.metric.winnow.model.tree, data.c5.model.metric.winnow.model.tree.labels, pos=1, cex=0.8)
+title(main = "Model Performance by trials and winnow/model values")
+legend('bottomright',data.c5.model.levels.model, lty=1, col=c('blue', 'red'))
+```
+
+###Prediction and evaluation
+
+After the prediction procedure with our testing data, we summarize the resulting model performance.
+
+```{r c5Prediction}
+set.seed(params$seed)
+data.c5.model.prediction <- predict(data.c5.model, data.c5.test)
+data.c5.model.confusionMatrix <- confusionMatrix(data.c5.model.prediction, data.c5.test$NSP)
+data.c5.model.confusionMatrix
+```
+
+##Random Forest
+
+###1.Data transformation
+
+We use the dummy binary data for our analysis.
+
+```{r forestDataAssingment}
+data.rf <- data.raw.dummy
+```
+
+We generate our training and testing data.
+
+```{r forestTrainingAndTestAssingment}
+data.rf.training <- data.rf[data.inTrain,]
+data.rf.test <- data.rf[-data.inTrain,]
+```
+
+###Model training
+
+For the Random Forrest model, there is only one tune up parameter we can use to obtain the best model.
+
+```{r forestModelParameters}
+modelLookup("rf")
+```
+
+The models are evaluated using the same re-sampling parameter as before, a standard data normalization process and a range of mtry values that ranges from 1 to 20 with a step of 2.
+
+```{r forestModel}
+set.seed(params$seed)
+data.rf.model.ctrl <- trainControl(method = params$trainControlMethod, number = params$trainControlMethodRounds)
+data.rf.model.grid <- expand.grid(mtry = seq(from = 1, to = 20, by = 2))
+data.rf.model <- train(
+  NSP ~ ., 
+  data = data.rf.training, 
+  method = "rf",
+  preProcess = c("range"),
+  trControl = data.rf.model.ctrl,
+  tuneGrid = data.rf.model.grid,
+  metric = params$metric
+  )
+```
+
+The created models summary are described below.
+
+```{r forestModelDescription}
+data.rf.model
+```
+
+The best tune up parameters are described on the following table.
+
+```{r}
+data.rf.model$bestTune
+```
+
+The following chart describe the models performance for each value of mtry used.
+
+```{r forestModelComparisson}
+plot(x = data.rf.model$results$mtry, y = data.rf.model$results[, params$metric], col = "blue", type = "o", xlab = "Cost", ylab=params$metric)
+title(main = "Model Performance by Randomly Selected Predictors")
+```
+
+###Prediction and evaluation
+
+After the prediction process, we obtain the following performance results.
+
+```{r forestPrediction}
+set.seed(params$seed)
+data.rf.model.prediction <- predict(data.rf.model, data.rf.test)
+data.rf.model.confusionMatrix <- confusionMatrix(data.rf.model.prediction, data.rf.test$NSP)
+data.rf.model.confusionMatrix
+```
+
+
+##Conclusion
+
+The following table displays the summary for all the models generated in the described procedures above.
+
+```{r conclusion}
+roundFactor <- 3
+data.result.methods <- c("k-Nearest", "Naive Bayes", "SVM Lineal", "SVM Radial", "Neural Network", "Decision Tree", "Random Forest")
+
+data.result.Accuracy <- c(
+  round(max(data.knearest.model$results$Accuracy), digits = roundFactor),
+  round(data.nb.model.confusionMatrix.optimum$overall['Accuracy'], digits = roundFactor),
+  round(max(data.svm.linear.model $results$Accuracy), digits = roundFactor),
+  round(max(data.svm.radial.model$results$Accuracy), digits = roundFactor),
+  round(max(data.neural.model$results$Accuracy), digits = roundFactor),
+  round(max(data.c5.model$results$Accuracy), digits = roundFactor),
+  round(max(data.rf.model$results$Accuracy), digits = roundFactor)
+)
+
+data.result.Kappa <- c(
+  round(max(data.knearest.model$results$Kappa), digits = roundFactor),
+  round(data.nb.model.confusionMatrix.optimum$overall['Kappa'], digits = roundFactor),
+  round(max(data.svm.linear.model $results$Kappa), digits = roundFactor),
+  round(max(data.svm.radial.model$results$Kappa), digits = roundFactor),
+  round(max(data.neural.model$results$Kappa), digits = roundFactor),
+  round(max(data.c5.model$results$Kappa), digits = roundFactor),
+  round(max(data.rf.model$results$Kappa), digits = roundFactor)
+)
+
+data.result.resampling <- rep(c(paste0(params$trainControlMethod, " (", params$trainControlMethodRounds, ")")), each=7)
+
+data.result.parameters <-c (
+  paste0("k=",data.knearest.model$bestTune$k),
+  paste0("lp=",which.max(data.nb.model.confusionMatrix.y)),
+  paste0("size=",data.neural.model$bestTune$size, ", decay=",data.neural.model$bestTune$decay),
+  paste0("C=",data.svm.linear.model$bestTune$C),
+  paste0("C=",data.svm.radial.model$bestTune$C, " ,sigma=",data.svm.radial.model$bestTune$sigma),
+  paste0("trials=",data.c5.model$bestTune$trials," model=",data.c5.model$bestTune$model," winnow=",data.c5.model$bestTune$winnow),
+  paste0("mtry=",data.rf.model$bestTune$mtry)
+  )
+
+data.result.norm <- rep(c("Yes"), each=7)
+
+data.result.bin <- c("Yes", "No", rep(c("Yes"), each=5))
+
+data.results.df <- data.frame(
+  data.result.methods, 
+  data.result.Accuracy, 
+  data.result.Kappa,
+  data.result.resampling,
+  data.result.parameters,
+  data.result.norm,
+  data.result.bin)
+
+colnames(data.results.df) <- c("Method", "Accuracy", "Kappa", "Resampling", "Parameters", "Normalization", "Binary")
+grid.table(data.results.df, theme=ttheme_default(base_size = 8))
+```
+
+The following charts compares the models performance per algorithm by Accuracy and Kappa values.
+```{r}
+ggplot(data = data.results.df, aes(y=Accuracy, x=Method))+
+  geom_bar(stat="identity", fill="steelblue")+
+  geom_text(aes(label=Accuracy), vjust=-0.3, size=3.5)+
+  theme_minimal()
+
+ggplot(
+  data = data.results.df, aes(y=Kappa, x=Method))+
+  geom_bar(stat="identity", fill="steelblue")+
+  geom_text(aes(label=Kappa), vjust=-0.3, size=3.5)+
+  theme_minimal()
+```
+
+We can say that the *Decision Tree* was indeed the best model for this study. Nevertheless, the differences among models are very small from one another. Even the SVN radial algorithm, with the lowest performance rate, fell into acceptance parameters. Still, the low kappa value for the SVN radial model may rest  significant confidence from this model.
+
+It is important to comment that, from all the obtained models, the prediction for the suspicious *NSP* category has shown a low level of confidence since almost 30% of all the testing in this sample category have been mistakenly classified as normal. This is not the case for pathological nor normal samples. Only the *Decision Tree* and the Random Forrest algorithms scored properly for suspicious samples.
+
+##Resources
+
+https://machinelearningmastery.com/pre-process-your-dataset-in-r/
+
+https://topepo.github.io/caret/pre-processing.html
+
+https://www.analyticsvidhya.com/blog/2016/12/practical-guide-to-implement-machine-learning-with-caret-package-in-r-with-practice-problem/
+
+http://dataaspirant.com/2017/01/09/knn-implementation-r-using-caret-package/

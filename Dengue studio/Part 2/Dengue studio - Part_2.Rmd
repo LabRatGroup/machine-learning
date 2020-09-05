@@ -1,0 +1,823 @@
+---
+title: 'Minería de datos: PRA2 - Modelado de un juego de datos'
+author: "Autor: Julio Fernández Jiménez"
+date: "Junio 2020"
+output:
+  html_document:
+    highlight: default
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
+    includes:
+      in_header: 75.584-PRA2-header.html
+  word_document: default
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+******
+# Introducción
+******
+## Presentación
+Esta práctica cubre de forma transversal la asignatura.
+
+Las Prácticas 1 y 2 de la asignatura se plantean de una forma conjunta de modo que la Práctica 2 será continuación de la 1.
+
+El objetivo global de las dos prácticas consiste en seleccionar uno o varios juegos de datos, realizar las tareas de preparación y análisis exploratorio con el objetivo de disponer de datos listos para aplicar algoritmos de clustering, asociación y clasificación.
+
+## Competencias
+Las competencias que se trabajan en esta prueba son:  
+
+* Uso y aplicación de las TIC en el ámbito académico y profesional.
+* Capacidad para innovar y generar nuevas ideas.
+* Capacidad para evaluar soluciones tecnológicas y elaborar propuestas de proyectos teniendo en cuenta los recursos, las alternativas disponibles y las condiciones de mercado.
+* Conocer las tecnolog??as de comunicaciones actuales y emergentes as?? como saberlas aplicar convenientemente para diseñar y desarrollar soluciones basadas en sistemas y tecnolog??as de la información.
+* Aplicación de las técnicas espec??ficas de ingenier??a del software en las diferentes etapas del ciclo de vida de un proyecto.
+* Capacidad para aplicar las técnicas espec??ficas de tratamiento, almacenamiento y administración de datos.
+* Capacidad para proponer y evaluar diferentes alternativas tecnológicas para resolver un problema concreto.
+
+## Objetivos
+La correcta asimilación de todos los aspectos trabajados durante el semestre.  
+En esta práctica abordamos un caso real de miner??a de datos donde tenemos que poner en juego todos los conceptos trabajados.
+Hay que trabajar todo el ciclo de vida del proyecto. Desde el objetivo del proyecto hasta la implementación del conocimiento encontrado pasando por la preparación, limpieza de los datos, conocimiento de los datos, generación del modelo, interpretación y evaluación.
+
+## Descripción de la PEC a realizar
+
+## Recursos Básicos
+Material docente proporcionado por la UOC. 
+
+## Criterios de valoración
+
+**Ejercicios prácticos** 
+
+Para todas las PEC es necesario documentar en cada apartado del ejercicio práctico que se ha hecho y como se ha hecho.
+
+## Formato y fecha de entrega
+El formato de entrega es: usernameestudiante-PECn.html/doc/docx/odt/pdf  
+Fecha de entrega: 15/01/2020  
+Se debe entregar la PEC en el buzón de entregas del aula  
+
+## Nota: Propiedad intelectual 
+
+> A menudo es inevitable, al producir una obra multimedia, hacer uso de recursos creados por terceras personas. Es por lo tanto comprensible hacerlo en el marco de una práctica de los estudios de Informática, Multimedia y Telecomunicación de la UOC, siempre y cuando esto se documente claramente y no suponga plagio en la práctica. 
+
+> Por lo tanto, al presentar una práctica que haga uso de recursos ajenos, se debe presentar junto con ella un documento en que se detallen todos ellos, especificando el nombre de cada recurso, su autor, el lugar donde se obtuvo y su estatus legal: si la obra esta protegida por el copyright o se acoge a alguna otra licencia de uso (Creative Commons, licencia GNU, GPL ...). 
+El estudiante deberá asegurarse de que la licencia no impide espec??ficamente su uso en el marco de la práctica. En caso de no encontrar la información correspondiente tendrá que asumir que la obra esta protegida por copyright. 
+
+> Deberéis, además, adjuntar los ficheros originales cuando las obras utilizadas sean digitales, y su código fuente si corresponde.  
+
+******
+# Enunciado
+******
+Como continuación del estudio iniciado en la práctica 1, procedemos en esta práctica 2 a aplicar modelos anal??ticos sobe el juego de datos seleccionado y preparado en la práctica anterior.
+
+De este modo se pide al estudiante que complete los siguientes pasos:  
+
+1. Aplicar un modelo de generación de reglas a partir de **Reglas de asociacion** _(Hay que usar el algoritmo arules)_.  
+
+2. Aplicar un modelo **no supervisado** y basado en el concepto de **distancia**, sobre el juego de datos _(Hay que usar el algoritmo kmeans)_.   
+
+3. Aplica de nuevo el modelo anterior, pero usando una **métrica distinta** y compara los resultados _(Hay que usar un algoritmo de clustering diferente al kmeans)_
+
+4. Aplicar un **modelo supervisado** sobre el juego de datos **sin** haber aplicado previamente **PCA/SVD** _(Hay que usar un árbol de decisión)_.
+
+5. Aplicar un **modelo supervisado** sobre el juego de datos habiendo aplicado previamente **PCA/SVD** _(Hay que usar un árbol de decisión tras la aplicación de un PCA/SVD)_.
+
+6. ¿Ha habido mejora en capacidad predictiva, tras aplicar PCA/SVD? ¿A qué crees que es debido? _(Hay que comparar los resultados de los puntos 4 y 5)_.   
+
+******
+# Solución
+******
+
+## Carga de los datos
+
+Vamos a comenzar realizando la carga de las librerías y funciones necesarias para ejecutar el ejercicio.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+libraries <- c("caret", "arules", "cluster", "fpc","tibble", "factoextra", "C50", "ggbiplot", "dplyr", "cluster")
+
+check.libraries <- is.element(libraries, installed.packages()[, 1]) == FALSE
+libraries.to.install <- libraries[check.libraries]
+
+if (length(libraries.to.install != 0)) {
+  install.packages(libraries.to.install)
+  }
+
+success <- sapply(libraries, require, quietly = FALSE, character.only = TRUE)
+if(length(success) != length(libraries)) {
+  stop("A package failed to return a success in require() function.")
+  }
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+```
+
+De la resolución de la práctica anterior, se han exportado los datos finales y vueltos a importar dentro del contexto de este proyecto. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.raw <- read.csv('dengue_data.csv',stringsAsFactors = FALSE)
+data.raw$cases <- as.factor(data.raw$cases)
+summary(data.raw)
+str(data.raw)
+```
+
+Dado que estos datos provienen de un ejercicio en el que se ha elaborado una amplia y exhaustiva tarea de limpieza y normalización de datos, vamos a saltarnos este paso y pasar directamente a la elaboración de los modelos.  
+
+Sin embargo, existe un problema que debe ser solventado y que ha sido descubierto durante la fase preliminar, y no documentada, de la elaboración del ejercicio. El problema surgió tras explorar la generación de reglas mediante _arules_ cuando el algoritmo no generaba regla alguna, o lo que es lo mismo, todas las reglas estaban orientadas a la misma clase resultado.  
+
+Tras múltiples intentos y evaluaciones se observó que la variable resultante _cases_ tiene una distribución poco equilibrada y no apta para la generación de reglas. Como era de esperar, este problema no estaba presente en los modelos no supervisados, aunque todos los modelos supervisamos daban como resultado una precisión superior al 98%, algo poco común. 
+
+Aunque tiene sentido agrupar los casos de dengue de forma que a priori nos parezca razonable, la realidad es que desde un punto de vista estadístico no lo es. Si observamos, más del 95% de los casos de dengue caen bajo la categoría de _low_ o bajos. Esto hace que cualquier modelo generado a partir de estos datos sea poco o nada eficaz. El modelo será muy eficiente prediciendo la baja indicencia de dengue pero nefasto en la predicción de casos moderados o de alta incidencia de la enfermedad. 
+
+Para resolver este problema de distribución de las clases resultantes, se ha optado por la redistribución de esta variable siguiendo otros criterios más objetivos. Para ello se ha hecho uso de la media como línea de corte; es decir, que todas aquellas semanas donde se hayan detectado hasta 25 casos de dengue se considerará una semana normal, mientras que si superamos los 25 casos lo catalogaremos como _pandemic_. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(data.raw$total_cases)
+```
+
+Tras realizar la nueva discretización de los datos mediante el método _fixed_, objetemos una distribución de 1036 casos normales y 420 pandémicos. Esta nueva distribución puede, sin duda alguna, generar modelos más fiables en su predicción. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+outcome <- data.frame('outcome' = discretize(data.raw$total_cases,method="fixed", breaks = c(0,25, 500), labels=c('normal', 'pandemic')))
+data.raw <- add_column(data.raw, outcome, .after = 13)
+data.raw$cases <- NULL
+summary(data.raw)
+```
+
+Normalizamos la columna _weekofyears_ para poder hacer uso de esta variable en un futuro como variable discreata.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+weekofyear_norm <-  as.data.frame(apply(data.raw[which( colnames(data.raw)=="weekofyear" )], 2, normalize))
+data.raw$weekofyear <- NULL
+data.raw <- add_column(data.raw, weekofyear_norm, .after = 4)
+summary(data.raw)
+```
+
+Como paso extra, vamos a buscar correlaciones en los datos para evaluar si es posible deshacernos de alguna variable. Los datos indican que no existe correlación entre los datos ya que ninguno es próximo a -1 o 1.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+cor(data.raw[,c(5,7,8,9,10,11)])
+```
+
+## Generación de reglas
+
+Para generar las reglas vamos a trabajar con dos subconjuntos de datos. En el primero utilizaremos la variable trimestre, que como ya sabemos, es una indicadora de las estaciones del año, y en el segundo trabajaremos sólo con datos climatológicos. La razón por la que hemos decidido utilizar dos subconjuntos de datos es porque creemos que el dato temporal es, en cierto modo, una función de los datos climatológicos y morfológicos recogidos.   
+
+Queremos ver la influencia directa que la variable trimestre pueda tener sobre las reglas en contraste con los factores climatológicos y morfológicos por si solos, y lo más importante, estudiar la eficacia de los modelos generados de ambos conjuntos. 
+
+### Uso de variables estacionales
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.arules.seasons <- data.raw[, -c(1, 2, 3, 4, 5, 12)]
+summary(data.arules.seasons)
+```
+
+A continuación, discretizamos las variables numéricas. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.arules.seasons$ndvi <- discretize(data.arules.seasons$ndvi, method="interval", labels=c('water', 'cement', 'vegetal'))
+data.arules.seasons$precipitation <- discretize(data.arules.seasons$precipitation, method="interval", labels=c('dry', 'normal', 'storm'))
+data.arules.seasons$air_temp_mean <- discretize(data.arules.seasons$air_temp_mean, method="interval", labels=c('low', 'medium', 'high'))
+data.arules.seasons$diur_temp_range <- discretize(data.arules.seasons$diur_temp_range, method="interval", labels=c('low', 'medium', 'high'))
+data.arules.seasons$humidity <- discretize(data.arules.seasons$humidity, method="interval", labels=c('dry', 'normal', 'wet'))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(data.arules.seasons)
+```
+
+Creamos los conjuntos de entramiento y test. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+set.seed(777)
+train <- createDataPartition(data.arules.seasons$outcome, p = 0.66, list = FALSE)
+
+data.arules.seasons.train <- data.arules.seasons[train,]
+data.arules.seasons.test <- data.arules.seasons[-train,]
+
+data.arules.seasons.train.x <- data.arules.seasons.train[,1:6]
+data.arules.seasons.train.y <- data.arules.seasons.train[,7]
+
+data.arules.seasons.test.x <- data.arules.seasons.test[,1:6]
+data.arules.seasons.test.y <- data.arules.seasons.test[,7]
+```
+
+Y estudiamos los resultados del modelo generado.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.arules.seasons.model <- C5.0(x = data.arules.seasons.train.x, y = data.arules.seasons.train.y, rules=TRUE)
+summary(data.arules.seasons.model)
+```
+
+Las reglas encontradas indican que: 
+
+Rango en temperatura diurna (medio, alto) -> casos normales 
+
+Estaciones de invierno y primavera -> casos normales 
+
+Estaciones verano y otoño + Rango en temperatura diurna (bajo) -> casos pandémicos. 
+
+ 
+
+Según estas reglas, existen dos factores que influencian la proliferación de los casos de dengue. Estos son las estaciones del año y la temperatura media diurna. Los casos aumentan durante el verano y el otoño (estación de huracanes para el área de San juan) y con un rango de temperatura media bajo; esto es, con pocas o ninguna bajada de temperatura durante la tarde. Los casos normales de dengue ocurren bajo condiciones totalmente opuestas. Podemos decir que al mosquito le gusta el calor y el agua.
+
+A pesar de ello, no vemos que el modelo pueda describir muy bien las condiciones exactas bajo las que prolifera el mosquito ya que sólo describe el 50% de los casos pandémicos. También podemos observar que el modelo deja la predicción en manos de la estación del año ignorando el resto de las variables. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.arules.seasons.model.chart <- C5.0(x = data.arules.seasons.train.x, y = data.arules.seasons.train.y)
+plot(data.arules.seasons.model.chart, subtree = 1)
+```
+
+### Uso de variables no estacionales
+
+Vamos a proceder ahora con el segundo conjunto de datos donde ignoramos la estación del año. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.arules.no_seasons <- data.arules.seasons[,-1]
+summary(data.arules.no_seasons)
+```
+
+Creamos los conjuntos de entramiento y test. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+set.seed(777)
+train <- createDataPartition(data.arules.no_seasons$outcome, p = 0.66, list = FALSE)
+
+data.arules.no_seasons.train <- data.arules.no_seasons[train,]
+data.arules.no_seasons.test <- data.arules.no_seasons[-train,]
+
+data.arules.no_seasons.train.x <- data.arules.no_seasons.train[,1:5]
+data.arules.no_seasons.train.y <- data.arules.no_seasons.train[,6]
+
+data.arules.no_seasons.test.x <- data.arules.no_seasons.test[,1:5]
+data.arules.no_seasons.test.y <- data.arules.no_seasons.test[,6]
+```
+
+Y estudiamos los resultados del modelo generado.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.arules.no_seasons.model <- C5.0(x = data.arules.no_seasons.train.x, y = data.arules.no_seasons.train.y, rules=TRUE)
+summary(data.arules.no_seasons.model)
+```
+
+Aquí obtenemos las siguientes reglas: 
+
+Rango en temperatura diurna (medio, alto) -> casos normales 
+
+Temperatura aire promedio (bajo, medio) -> casos normales 
+
+Rango en temperatura diurna (bajo) + Temperatura aire promedio (alto) -> casos pandémicos 
+
+Para este conjunto de datos, el árbol resultante es más diverso al proveer reglas que incluyen otras variables, podemos decir que "se explica mejor" que el modelo anterior. Aquí podemos ver que los casos de dengue aumentan con las combinaciones de altas temperaturas promedios diarias y constantes durante la tarde y sobre todo en zonas urbanas (ndvi ~ 0). 
+
+El factor temperatura ha sido constante en ambos estudios, extendido los resultados a la temperatura media en este segundo conjunto de datos donde además se ha sumado el factor _ndvi_ en forma de zonas con cemento o urbanizadas, que es precisamente donde el agua es más propensa a estancarse. A esta informacion, y según el modelo anterior, podemos añadirle el hecho de que las estaciones de verano y otoño son las mas propensas para desarrollo del mosquito.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.arules.no_seasons.model.chart <- C5.0(x = data.arules.no_seasons.train.x, y = data.arules.no_seasons.train.y)
+plot(data.arules.no_seasons.model.chart, subtree = 1)
+```
+
+Vamos a continuación a comparar ambos modelos en términos de eficiencia predictiva de los datos de prueba. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.arules.seasons.predicted_model <- predict(data.arules.seasons.model, data.arules.seasons.test.x, type="class")
+print(sprintf("La precisión del árbol con estaciones es: %.4f %%",100*sum(data.arules.seasons.predicted_model == data.arules.seasons.test.y) / length(data.arules.seasons.predicted_model)))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.arules.no_seasons.predicted_model <- predict(data.arules.no_seasons.model, data.arules.no_seasons.test.x, type="class")
+print(sprintf("La precisión del árbol sin estaciones es: %.4f %%",100*sum(data.arules.no_seasons.predicted_model == data.arules.no_seasons.test.y) / length(data.arules.no_seasons.predicted_model)))
+```
+
+El árbol deducido del conjunto de datos que incluye las estaciones del año ha devengado un mayor porcentaje en la precisión de los resultados en contraste con aquel que utiliza datos puramente climáticos y morfológicos. Por el contrario, la definición de reglas es más rica y explicita al omitir la variable estacional.
+
+## Modelo no supervisado
+
+Para realizar el modelo no supervisado vamos a repetir el procedimiento anterior y hacer uso de un conjunto con variable temporal y otro sin ella. Utilizaremos la variable normalizada  _weekofyear_morm_. El propósito de este ejercicio es encontrar el número de clústeres óptimo para nuestro modelo mediante el método _kmeans_.
+
+### Uso de variables estacionales
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.seasons <- data.raw[, c(5,7,8,9,10,11,13)]
+summary(data.kmeans.seasons)
+```
+
+Para el cálculo de clusters óptimo, realizamos una iteración en la que asumimos un total de 2 hasta de 10 clusters. Con cada uno de estos valores utilizamos el algoritmo _kmeans_ para clasificar las muestras y el método _silhouette_ para estudiar la precisión en la agrupación de los datos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+x <- data.kmeans.seasons[,1:6]
+d <- daisy(x) 
+
+resultados <- rep(0, 7)
+cluster  <- data.frame(c(2,3,4,5,6,7))
+
+for (i in c(2,3,4,5,6,7))
+{
+  fit           <- kmeans(x, i)
+  y_cluster     <- fit$cluster
+  sk            <- silhouette(y_cluster, d)
+  resultados[i] <- mean(sk[,3])
+}
+
+plot(2:7,resultados[2:7],type="o",col="blue",pch=0,xlab="Número de clusters",ylab="Silueta")
+```
+
+La gráfica revela una agrupación más definida para un modelo con 4 clústeres. El método _elbow_, debajo, recomienda el uso de 3 clústeres.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+resultados <- rep(0, 7)
+for (i in c(2,3,4,5,6,7))
+{
+  fit           <- kmeans(x, i)
+  resultados[i] <- fit$tot.withinss
+}
+plot(2:7,resultados[2:7],type="o",col="blue",pch=0,xlab="Número de clusters",ylab="tot.tot.withinss")
+```
+
+Si procedemos con la función _kmeansruns_ bajos los criterios de la silueta media y _Calinski-Harabasz_ obtenemos que para ambos casos el número óptimo de clusters es de 4. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fit_ch  <- kmeansruns(x, krange = 1:10, criterion = "ch") 
+fit_asw <- kmeansruns(x, krange = 1:10, criterion = "asw")
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fit_ch$bestk
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fit_asw$bestk
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+plot(1:10,fit_ch$crit,type="o",col="blue",pch=0,xlab="Número de clústers",ylab="Criterio Calinski-Harabasz")
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+plot(1:10,fit_asw$crit,type="o",col="blue",pch=0,xlab="Número de clústers",ylab="Criterio silueta media")
+```
+
+Vamos ahora a realizar las gráficas de los modelos de 2, 3 y 4 clústeres para estudiar la agrupación de los datos en relación con el número de clústeres de forma visual. 
+
+Para el _clusplot_ de dos clústeres, que es como tenemos agrupados los datos, podemos ver que aunque si existen dos grupos de datos claramente definidos, las elipses van en dirección contraria a la agrupación natural de los datos. Los mismo ocurre para los gráficos de 3 y 4 clústeres donde las elipses no definen claramente los núcleos de datos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.2_clusters <- kmeans(x, 2)
+clusplot(x, data.kmeans.2_clusters$cluster, color=TRUE, shade=TRUE, labels=2, lines=0)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.3_clusters <- kmeans(x, 3)
+clusplot(x, data.kmeans.3_clusters$cluster, color=TRUE, shade=TRUE, labels=3, lines=0)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.4_clusters <- kmeans(x, 4)
+clusplot(x, data.kmeans.4_clusters$cluster, color=TRUE, shade=TRUE, labels=3, lines=0)
+```
+
+Al contrastar los datos obtenidos en el análisis de reglas de semana del año y temperatura media podemos ver claramente la polarización de los datos, la cual se repite en los gráficos para 3 y 4 clústeres. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+plot(data.kmeans.seasons[c(1,4)], col=data.kmeans.2_clusters$cluster)
+plot(data.kmeans.seasons[c(1,4)], col=data.kmeans.3_clusters$cluster)
+plot(data.kmeans.seasons[c(1,4)], col=data.kmeans.4_clusters$cluster)
+```
+
+El patrón se repite para la variable que define la vegetación de la zona, otra de las reglas relevantes obtenidas.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+plot(data.kmeans.seasons[c(1,2)], col=data.kmeans.2_clusters$cluster)
+plot(data.kmeans.seasons[c(1,2)], col=data.kmeans.3_clusters$cluster)
+plot(data.kmeans.seasons[c(1,2)], col=data.kmeans.4_clusters$cluster)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.2_clusters.table <- table(data.kmeans.2_clusters$cluster,data.kmeans.seasons$outcome)
+data.kmeans.2_clusters.table
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.2_clusters.table.precision = 100*(max(data.kmeans.2_clusters.table[1], data.kmeans.2_clusters.table[3])+ max(data.kmeans.2_clusters.table[2], data.kmeans.2_clusters.table[4]))/(sum(data.kmeans.2_clusters.table))
+
+data.kmeans.2_clusters.table.precision
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.3_clusters.table <- table(data.kmeans.3_clusters$cluster,data.kmeans.seasons$outcome)
+data.kmeans.3_clusters.table
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.3_clusters.table.precision = 100*(max(data.kmeans.3_clusters.table[1], data.kmeans.3_clusters.table[4]) + max(data.kmeans.3_clusters.table[2], data.kmeans.3_clusters.table[5]) + max(data.kmeans.3_clusters.table[3], data.kmeans.3_clusters.table[6]))/(sum(data.kmeans.3_clusters.table))
+
+data.kmeans.3_clusters.table.precision
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.4_clusters.table <- table(data.kmeans.4_clusters$cluster,data.kmeans.seasons$outcome)
+data.kmeans.4_clusters.table
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.4_clusters.table.precision = 100*(max(data.kmeans.4_clusters.table[1], data.kmeans.4_clusters.table[5])+max(data.kmeans.4_clusters.table[2], data.kmeans.4_clusters.table[6])+max(data.kmeans.4_clusters.table[3], data.kmeans.4_clusters.table[7])+max(data.kmeans.4_clusters.table[4], data.kmeans.4_clusters.table[8]))/(sum(data.kmeans.4_clusters.table))
+
+data.kmeans.4_clusters.table.precision
+```
+
+Al calcular la precisión de los tres modelos, aquel que hace uso de los 4 clústeres es el que mayor precisión presenta con un *75.41%*. Este valor supera en un 4% y un 2% a los modelos de 2 y 3 clústeres respectivamente.
+
+### Uso de variables no estacionales
+
+Repitamos ahora el procedimiento omitiendo la variable temporal de semana del año. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.no_seasons <- data.raw[, c(7,8,9,10,11,13)]
+summary(data.kmeans.no_seasons)
+```
+
+Inicialmente observamos que la recomendación es de 2 clústeres. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+x <- data.kmeans.no_seasons[,1:5]
+d <- daisy(x) 
+
+resultados <- rep(0, 7)
+cluster  <- data.frame(c(2,3,4,5,6,7))
+
+for (i in c(2,3,4,5,6,7))
+{
+  fit           <- kmeans(x, i)
+  y_cluster     <- fit$cluster
+  sk            <- silhouette(y_cluster, d)
+  resultados[i] <- mean(sk[,3])
+}
+
+plot(2:7,resultados[2:7],type="o",col="blue",pch=0,xlab="Número de clusters",ylab="Silueta")
+```
+
+El método del _elbow_ recomienda utilizar 3 clússteres para estos datos. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+resultados <- rep(0, 7)
+for (i in c(2,3,4,5,6,7))
+{
+  fit           <- kmeans(x, i)
+  resultados[i] <- fit$tot.withinss
+}
+plot(2:7,resultados[2:7],type="o",col="blue",pch=0,xlab="Número de clusters",ylab="tot.tot.withinss")
+```
+
+Si procedemos con la función _kmeansruns_ bajos los criterios de la silueta media y _Calinski-Harabasz_ obtenemos que para ambos casos el número óptimo de clústeres es de 3 y 2 respectivamente, aunque para _Calinski-Harabasz_ tenemos que los valores que validan la opción de 3 clústeres es similar a la de 2. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fit_ch  <- kmeansruns(x, krange = 1:10, criterion = "ch") 
+fit_asw <- kmeansruns(x, krange = 1:10, criterion = "asw")
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fit_ch$bestk
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fit_asw$bestk
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+plot(1:10,fit_ch$crit,type="o",col="blue",pch=0,xlab="Número de clústers",ylab="Criterio Calinski-Harabasz")
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+plot(1:10,fit_asw$crit,type="o",col="blue",pch=0,xlab="Número de clústers",ylab="Criterio silueta media")
+```
+
+Procedemos pues a realizar el _clusplot_ que claramente revela dos grupos y dos elipses, esta vez, en la dirección correcta. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.no_seasons.2_clusters <- kmeans(x, 2)
+clusplot(x, data.kmeans.no_seasons.2_clusters$cluster, color=TRUE, shade=TRUE, labels=2, lines=0)
+```
+
+Al comparar la temperatura del aire media con otros factores, podemos ver una clara polarización de los datos cuando es contrastada con variables envueltas en las reglas de asociación, cosa que no ocurre con la precipitación. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+plot(data.kmeans.no_seasons[c(1,3)], col=data.kmeans.no_seasons.2_clusters$cluster)
+plot(data.kmeans.no_seasons[c(2,3)], col=data.kmeans.no_seasons.2_clusters$cluster)
+plot(data.kmeans.no_seasons[c(4,3)], col=data.kmeans.no_seasons.2_clusters$cluster)
+```
+
+El model de tres clústeres se representa continuación.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.no_seasons.3_clusters <- kmeans(x, 3)
+clusplot(x, data.kmeans.no_seasons.3_clusters$cluster, color=TRUE, shade=TRUE, labels=3, lines=0)
+```
+
+El contraste de variables se comporta similar de el dos clústeres.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+par(mfrow=c(2,2))
+plot(data.kmeans.no_seasons[c(1,3)], col=data.kmeans.no_seasons.3_clusters$cluster)
+plot(data.kmeans.no_seasons[c(2,3)], col=data.kmeans.no_seasons.3_clusters$cluster)
+plot(data.kmeans.no_seasons[c(4,3)], col=data.kmeans.no_seasons.3_clusters$cluster)
+```
+
+La precision es del 71.15%, pero en este caso para ambos modelos independienemete de los clústeres usados.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.no_seasons.2_clusters.table <- table(data.kmeans.no_seasons.2_clusters$cluster,data.kmeans.no_seasons$outcome)
+data.kmeans.no_seasons.2_clusters.table
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.no_seasons.2_clusters.table.precision = 100*(max(data.kmeans.no_seasons.2_clusters.table[1], data.kmeans.no_seasons.2_clusters.table[3])+ max(data.kmeans.no_seasons.2_clusters.table[2], data.kmeans.no_seasons.2_clusters.table[4]))/(sum(data.kmeans.no_seasons.2_clusters.table))
+
+data.kmeans.no_seasons.2_clusters.table.precision
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.no_seasons.3_clusters.table <- table(data.kmeans.no_seasons.3_clusters$cluster,data.kmeans.no_seasons$outcome)
+data.kmeans.no_seasons.3_clusters.table
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmeans.no_seasons.3_clusters.table.precision = 100*(max(data.kmeans.no_seasons.3_clusters.table[1], data.kmeans.no_seasons.3_clusters.table[4])+ max(data.kmeans.no_seasons.3_clusters.table[2], data.kmeans.no_seasons.3_clusters.table[5]) + max(data.kmeans.no_seasons.3_clusters.table[3], data.kmeans.no_seasons.3_clusters.table[6]))/(sum(data.kmeans.no_seasons.3_clusters.table))
+
+data.kmeans.no_seasons.3_clusters.table.precision
+```
+
+A pesar de que el modelo con los datos estacionales y cuatro clústeres denota un mejor rendimiento, consideramos que el de dos clústeres sin datos estacionales explica mejor el modelo. Esta conclusión la basamos en los siguientes hechos: 
+
+
+- El modelo no estacional de dos clústeres se ajusta mejor a nuestro modelo de agrupación para los casos de dengue basado en la media. 
+
+- El modelo no estacional hace uso de más variables para explicar las reglas mientras que el estacional delega la creación de reglas en la estación en la que se recogieron los datos. 
+
+- Los datos estacionales son una constante independiente que sigue un patrón marcado y bien distribuido, cosa que no podemos afirmar del resto de las variables, que son medidas científicas de las condiciones climatológicas y morfológcas de las zonas estudiadas. 
+
+- Los _clusplot_ para los modelos estacionales invierte claramente la dirección de las zonas definidas y los clústeres  de datos reales. 
+
+En resumen, creemos que la variable estacional explica el modelo desde una perspectiva poco científica y por ende será eliminada de los estudios que a continuación se producen. 
+
+## Modelos no supervisados alternativos
+
+Como método alternativo hemos seleccionado *k-medoids* basado en la distancia promedio de los puntos al punto real y central del cúmulo. Utilizaremos la función *fviz_nbclust* para realizar las estimaciones de los cúmulos. Calcularemos el número óptimos de clúster utilizando el método del codo y el de la distancia euclidiana. Como ya se ha mencionado anteriormente, omitiremos la variable estacional.  
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmedoids <- data.kmeans.no_seasons
+x <- data.kmedoids[,1:5]
+```
+
+
+El número recomendado de clústeres es de 2
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fviz_nbclust(x = x, FUNcluster = pam, method = "silhouette", k.max = 10, diss = dist(x, method = "euclidean"))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fviz_nbclust(x = x, FUNcluster = pam, method = "wss", k.max = 10, diss = dist(x, method = "euclidean"))
+```
+
+El gráfico de _clusplot_ es similar al del ejercicio anterior con dos grupos de datos claramente señalados.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmedoids.cluster <- pam(x = x, k = 2, metric = "euclidean")
+clusplot(x, data.kmedoids.cluster$cluster, color=TRUE, shade=TRUE, labels=2, lines=0)
+```
+
+La precisión del model es del 71.15%, igual que para el método de _kmeans_.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmedoids.cluster.table <- table(data.kmedoids.cluster$cluster,data.kmedoids$outcome)
+data.kmedoids.cluster.table
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmedoids.cluster.table.precision = 100*(max(data.kmedoids.cluster.table[1], data.kmedoids.cluster.table[3])+ max(data.kmedoids.cluster.table[2], data.kmedoids.cluster.table[4]))/(sum(data.kmedoids.cluster.table))
+
+data.kmedoids.cluster.table.precision
+```
+
+A continuación vamos a utilizar el metido *Fuzzy clustering* que hace uso del algoritmo _c-means_ donde el centro del clúster es la media de la probabilidad de las observaciones de pertenecer a ese grupo. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.kmedoids <- data.kmeans.no_seasons
+x <- data.kmedoids[,1:5]
+```
+
+Este método recomienda el uso de 3 clústeres.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.fuz.output <- rep(0, 5)
+
+for (i in c(2,3,4,5))
+{
+  fit           <- fanny(x = x, diss = FALSE, k = i, metric = "euclidean", stand = FALSE)
+  data.fuz.output[i] <- fit$coeff['normalized']
+}
+
+plot(2:5,data.fuz.output[2:5],type="o",col="blue",pch=0,xlab="Número de clusters",ylab="Coeficiente Dunn")
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.fuz.3_cluster <- fanny(x = x, diss = FALSE, k = 3, metric = "euclidean", stand = FALSE)
+clusplot(x, data.fuz.3_cluster$clustering, color=TRUE, shade=TRUE, labels=2, lines=0)
+```
+
+Podemos observar que el rendimiento es de 71.49%.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.fuz.3_cluster.table <- table(data.fuz.3_cluster$cluster,data.kmeans.no_seasons$outcome)
+data.fuz.3_cluster.table
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.fuz.3_cluster.table.precision = 100*(max(data.fuz.3_cluster.table[1], data.fuz.3_cluster.table[4])+max(data.fuz.3_cluster.table[2], data.fuz.3_cluster.table[5])+max(data.fuz.3_cluster.table[3], data.fuz.3_cluster.table[6]))/(sum(data.fuz.3_cluster.table))
+data.fuz.3_cluster.table.precision
+```
+
+
+En general, concluimos que los modelos de dos clústeres observados devengan una precisión del 71.15% en todos los métodos, mientras que el de 3 clústeres para el método de *Fuzzy clustering* nos aporta un 71.49% de precisión, algo superior que el obtenido para _kmeans_.
+
+## Modelos supervisado "Decision Tree" sin PCA
+
+Vamos a crear ahora un modelo basado en árbol de decisiones, para ello utilizaremos el paquete CARET que nos permitirá optimizar los parámetros del modelo de forma recursiva. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree <- data.kmeans.no_seasons
+summary(data.tree)
+```
+
+Antes de proceder, creamos nuestro conjunto de datos de entrenamiento y pruebas.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+set.seed(777)
+train <- createDataPartition(data.tree$outcome, p = 0.66, list = FALSE)
+
+data.tree.train <- data.tree[train,]
+data.tree.test <- data.tree[-train,]
+
+data.tree.train.x <- data.tree.train[,1:5]
+data.tree.train.y <- data.tree.train[,6]
+
+data.tree.test.x <- data.tree.test[,1:5]
+data.tree.test.y <- data.tree.test[,6]
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.model.grid <- expand.grid(winnow = c(FALSE, TRUE), trials = seq(from = 1, to = 20, by = 2), model = c("rules"))
+
+data.tree.model <- train(
+  outcome ~ ., 
+  data = data.tree.train, 
+  method = "C5.0",
+  tuneGrid = data.tree.model.grid,
+  metric = 'Accuracy'
+  )
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.model
+```
+
+A continuación, extraemos el modelo más eficiente. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.model$bestTune
+```
+
+Al siguiente gráfico nos revela la progresión de los modelos calculados según su precisión. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+plot(data.tree.model)
+```
+
+Realizamos una predicción con los datos de pruebas, obsevando una precisión del *73.28%*.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.predicted_model <- predict(data.tree.model, data.tree.test)
+data.tree.predicted_model.confusionMatrix <- confusionMatrix(data.tree.predicted_model, data.tree.test$outcome)
+data.tree.predicted_model.confusionMatrix
+```
+
+Podemos decir que este modelo realiza un mejor trabajo realizando predicciones del tipo _normal_ en contraste con las _pandemicas_. Esto es un reflejo de la composición de los datos y su clasificación, donde existen más valores que dan como resultado un diagnóstico _normal_. Esto puedo verse reflejado en el alto nivel de sensibilidad ( _true positive_ ) del test en comparación con la especificidad ( _true negative_ ). 
+
+### Modelos supervisado "Decision Tree" con PCA
+
+A continuación, vamos a efectuar un análisis PCA para descartar variables que puedan estar aportando poco al modelo final. Este análisis nos permitirá simplificar el modelo con un bajo coste en la precisión final del modelo aunque con una ganancia en rendimiento a la hora de calcular el modelo a utilizar. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.pca.analysis <- prcomp(data.tree[,1:5], center = TRUE, scale. = TRUE)
+summary(data.tree.pca.analysis)
+```
+
+Si observamos al resultado del modelo, podemos deducir que son los dos primeros componentes quienes explican mejor el modelo. De la rotación podemos observar que _ndvi_, _air_temp_mean_ y _diur_temp_range_ tienen más peso a la hora de calcular el modelo. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.pca.analysis$rotation
+```
+
+Si realizamos el _plot_ de los dos primeros componentes, podemos observar que es PC1 quien explica mejor el modelo y que existe una mayor descentralización de los dos grupos. Además, podemos observar como ndvi_, _air_temp_mean_ y _diur_temp_range_ son las encargadas de polarizar el diagrama desde las esquinas éste. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggbiplot(data.tree.pca.analysis,ellipse=TRUE, obs.scale = 1, var.scale = 1,  groups=data.tree$outcome, alpha = 0)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggbiplot(data.tree.pca.analysis,ellipse=TRUE, choices = c(2,3),  obs.scale = 1, var.scale = 1,  groups=data.tree$outcome, alpha = 0)
+```
+
+Vamos ahora a repetir el modelo de predicción basado en el árbol de decisiones del paquete CARET.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.pca <- data.tree
+summary(data.tree.pca)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+set.seed(777)
+train <- createDataPartition(data.tree.pca$outcome, p = 0.66, list = FALSE)
+
+data.tree.pca.train <- data.tree.pca[train,]
+data.tree.pca.test <- data.tree.pca[-train,]
+
+data.tree.pca.train.x <- data.tree.pca.train[,1:5]
+data.tree.pca.train.y <- data.tree.pca.train[,6]
+
+data.tree.pca.test.x <- data.tree.pca.test[,1:5]
+data.tree.pca.test.y <- data.tree.pca.test[,6]
+```
+
+Entrenamos un modelo con CARET indicando que queremos un preprocesamiento de los datos con PCA. CARET se encargará de seleccionar las variables óptimas para el modelo con variables reducidas.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.pca.model.grid <- expand.grid(winnow = c(FALSE, TRUE), trials = seq(from = 1, to = 15, by = 2), model = c("rules"))
+
+data.tree.pca.model <- train(
+  outcome ~ ., 
+  data = data.tree.pca.train, 
+  method = "C5.0",
+  tuneGrid = data.tree.pca.model.grid,
+  metric = 'Accuracy',
+  preProcess = c('pca')
+  )
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.pca.model
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.pca.model$bestTune
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+plot(data.tree.pca.model)
+```
+
+Finalmente vemos que la precisión del modelo es de *71.46%*, un 1.82% inferior que el anterior sin PCA. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+data.tree.pca.predicted_model <- predict(data.tree.pca.model, data.tree.pca.test)
+data.tree.pca.predicted_model.confusionMatrix <- confusionMatrix(data.tree.pca.predicted_model, data.tree.pca.test$outcome)
+data.tree.pca.predicted_model.confusionMatrix
+```
+Este modelo ha aumentado su capacidad para realizar predicciones del tipo _normal_, pero ha perdido capacidad en lo referente a predicciones del tipo _pandemic_. Esto ha ocurrido como consecuencia de la eliminación de variables que, aunque aportaban poco al modelo, favorecían a la predicción en favor de la clase negativa o _pandemic_. 
+
+## Conclusión árboles decisiones + PCA
+
+Como bien se ha mencionado, existe un decremento en la precisión del modelo con PCA del 1.82%. Este es debido a que estamos trabajando con menos variables y por consecuente el modelo será menos preciso. Sin embargo, hay que tener claro que el propósito de PCA no es el de mejorar el rendimiento del modelo sino el de simplificarlo con el menor coste posible, que es lo que se ha logrado con este procedimiento. 
+
+******
+# Rúbrica
+******
+ 
+
+* 15%. Se generan reglas y se comentan e interpretan las m?s significativas. Evaluar la calidad del modelo generado con los indicadores que se consideren adecuados.
+* 15%. Se genera modelo no supervisado, se muestran y comentan medidas de calidad del modelo generado y se comentan las conclusiones as? como la descripci?n de los grupos obtenidos.
+* 20%. Se genera modelo no supervisado con m?trica de distancia distinta al anterior. Se muestran y comentan medidas de calidad del modelo generado y se comentan las conclusiones as? como la descripci?n de los grupos obtenidos. Adicionalmente se comparan los dos modelos no supervisados con m?tricas de distancia distinta.
+* 15%. Se genera un modelo supervisado sin PCA/SVD previo, se muestran y comentan medidas de calidad del modelo generado y se comenta extensamente el conocimiento extra?do del modelo.
+* 15%. Se genera un modelo supervisado con PCA/SVD previo, se muestran y comentan medidas de calidad del modelo generado y se comenta extensamente el conocimiento extra?do del modelo. Se valorar? la extracci?n de conocimiento del modelo generado.
+* 20%. Se compara la capacidad predictiva de los dos modelos supervisados y se comenta la diferencia de rendimiento en base al efecto PCA/SVD.
+
+
+
+
+
+
+
+

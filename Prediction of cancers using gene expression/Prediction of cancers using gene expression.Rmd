@@ -1,0 +1,635 @@
+---
+title: 'PEC2: Classification and diagnostic prediction of cancers using gene expression profiling' 
+subtitle: '`r params$subtitulo`'
+author: "Escribir vuestro nombre y apellidos"
+date: '`r format(Sys.Date(),"%e de %B, %Y")`'
+output:
+  pdf_document:
+    keep_tex: yes
+    toc: yes
+    toc_depth: 3
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: 3
+nocite: |
+  @lantz2015machine
+  @khan2001classification
+header-includes:
+  - \usepackage[spanish]{babel}
+params:
+  file1_ANN: pcaComponents.csv
+  file1_SVM: data.csv
+  file2: class.csv
+  fold: dataset
+  p.train: !r 2/3
+  subtitulo:  Artificial neural networks & support vector machines
+  seed.train: 12345
+  seed.clsfier: 1234567
+  
+bibliography: pecs.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NULL, cache=TRUE)
+options(width=90)
+```
+
+
+
+```{r packages, message=FALSE, echo=FALSE, warning=FALSE}
+libraries <- c("neuralnet", "NeuralNetTools", "kernlab" ,"caret")
+check.libraries <- is.element(libraries, installed.packages()[, 1])==FALSE
+libraries.to.install <- libraries[check.libraries]
+if (length(libraries.to.install!=0)) {
+  install.packages(libraries.to.install,repos= "https://cloud.r-project.org")
+}
+
+success <- sapply(libraries,require, quietly = FALSE,  character.only = TRUE)
+if(length(success) != length(libraries)) {stop("A package failed to return a success in require() function.")}
+```
+
+
+\pagebreak
+
+# Classification and diagnostic prediction of cancers using gene expression profiling and artificial neural networks
+
+En esta PEC vamos a realizar un informe que analiza un caso basado en los datos del artículo:
+
+**Classification and diagnostic prediction of cancers using gene
+expression profiling and artificial neural networks.
+Khan et al. Nature Medicine, 2001, 6, 673-679**
+
+Los datos se pueden obtener directamente de la revista Nature Medicine o directamente de la PEC.
+
+
+En dicho artículo se investiga la predición del diagnóstico de un tipo de cancer, "small, round blue cell tumors (SRBCTs)" en la infancia usando información del perfil de expresión génica obtenica mediante técnicas de microarrays.
+
+Se estudian 4 tipos de canceres:
+
+\emph{The small, round blue cell tumors (SRBCTs) of childhood, which
+include neuroblastoma (NB), rhabdomyosarcoma (RMS), non-
+Hodgkin lymphoma (NHL) and the Ewing family of tumors
+(EWS), are so named because of their similar appearance on routine
+histology1. However, accurate diagnosis of SRBCTs is essential
+because the treatment options, responses to therapy and
+prognoses vary widely depending on the diagnosis. As their
+name implies, these cancers are difficult to distinguish by light
+microscopy, and currently no single test can precisely distinguish
+these cancers.}
+
+El proceso de clasificación (ver Fig. 1) es mucho más elaborado que los presentados en las unidades. No reproduciremos este esquema, aunque es importante que se entienda. Se basa en  una red neuronal artificial usando 3-fold crossvalidación y repitiendo el proceso 1250 veces mediante particiones aleatorias (proceso similar al bootstrap) para poder estudiar la robustez del modelo. Observar que el número de variables es muy grande (2308) así que se ha optado por realizar un análisis de componentes principales para reducir la dimensión de las variables iniciales y usar solo las 10 primeras en el algoritmo. 
+
+El análisis de componentes principales (PCA, en ingles) es una técnica básica y muy utilizada en análisis multivariante para reducir el número de variables creando nuevas variables como combinación lineal de las originales buscando máximizar la varianza explicada. Como no sé si sabeis realizar en R un PCA he optado por crear un fichero con el resultado del PCA llamado "pcaComponents.csv". 
+
+
+En esta PEC se usará los datos del artículo para implementar el algoritmo de red neuronal artificial y "support vector machine" (SVM) para predecir los cuatro tipos de canceres.
+
+
+#Algoritmo Red Neuronal Artificial (ANN)
+
+Las redes neuronales artificiales se inspira en las redes neuronales como las que se tiene en el cerebro. Las neuronas se sustituyen por nodos que reciben y envian señales (información).  Se crea una red con diferentes capas interconectadas para procesar la información. Cada capa esta formada por un grupo de nodos que transmite la información a los otros nodos de las capas siguientes.
+
+Una red neuronal artificial se caracteriza por:
+
+- La topología: Esto corresponde al número de capas y de nodos. Además de la dirección en que se la información pasa de un nodo al siguiente, dentro de capas o entre capas.
+
+- La función de activación:  Función que recibe un conjunto de entradas e integra la señales para transmitir la nformación a otro nodo/capa. 
+
+- El algoritmo de entrenamiento: Establece la importancia de cada conexión para transmitir o no la señal a los nodos correspondientes. El más usado es el algoritmo "backpropagation". El nombre indica que para corregir los errores de predicción va hacia atras de la red corrigiendo los pesos de los nodos. 
+
+Las fortalezas y debilidades de este algoritmo son:
+
+| **Fortalezas**    | **Debilidades**  | 
+| ------------------------------------ |:------------------------------------|
+|- Adaptable a clasificación o problemas de predicción numérica |- Requiere de gran potencia computacional y en general es de aprendizaje lento, particularmente si la topología es compleja |
+| - Capaz de modelar patrones más complejos que casi cualquier otro algoritmo | - Propenso a sobreajustar los datos de entrenamiento |
+| - No necesita muchas restricciones acerca de las relaciones subyacentes de los datos | - Es un modelo de caja negra complejo que es difícil, si no imposible, de interpretar
+
+## Step 1 - Recoger los datos
+
+Se usará los archivos depositados en la PEC ya que se tiene el resultado del PCA.
+
+
+```{r, echo=TRUE, eval=FALSE}
+fold <- "dataset"
+
+file1_ANN <- "pcaComponents.csv"
+file2 <- "class.csv"
+```
+
+```{r, echo=TRUE}
+mydata0 <- read.csv(file=file.path(params$fold,params$file1_ANN))
+clase <- read.csv(file=file.path(params$fold,params$file2))
+#gene.names <- read.csv(file=file.path(fold,"names.csv"))
+
+```
+
+
+El primer conjunto de datos denominado *`r params$file1_ANN`* esta formado por `r nrow(mydata0)` muestras, entre biopsias de tumores y líneas celulares. Es el resultado de haber realizado el análisis de componentes principales (PCA) sobre los datos originales. 
+
+El segundo conjunto de datos denominado *`r params$file2`* corresponde a la clase de tumor de los anteriores datos. 
+
+
+Como variables solo se van a escoger las *`r (nvar<-10)`*  primeras variables del PCA, es decir, las  *`r nvar`* primeras componentes principales.
+
+```{r, echo=TRUE}
+# Se selecciona las 10 primeras componentes
+mydata <- mydata0[,1:10]  
+
+```
+
+## Step 2 - Exploración y preparación de los datos
+
+
+En primer lugar veremos los seis primeros registros: 
+
+```{r, echo=FALSE}
+head(mydata)
+```
+
+Un exploración gráfica mediante boxplot da:
+
+```{r}
+boxplot(mydata, las=2, col="lightsalmon2", main="PCA data")
+
+```
+
+Hay que normalizar las variables para que tomen valores entre 0 y 1. Se define la función `normalize` para realizar está operación.
+
+```{r}
+# custom normalization function
+normalize <- function(x) {
+return((x - min(x)) / (max(x) - min(x)))
+}
+
+mydata_nrm <- as.data.frame(lapply(mydata, normalize))
+summary(mydata_nrm)
+```
+
+El boxplot de los datos transformados queda:
+
+
+```{r}
+boxplot(mydata_nrm, las=2, col="palegreen3", main="Normalize: PCA data ")
+
+```
+
+Por otro parte, se tiene la información de la clase de tumors registrada en cada muestra. Mediante una tabla se muestra el número de clases de cada tipo:
+
+```{r}
+table(clase)
+```
+
+La notación de cada clase es numerica. Seria más claro hacer una notación con etiquetas.
+
+```{r}
+lab.group <- c("EWS","BL","NB","RMS")
+clase.f <- factor(clase$x,labels=lab.group)
+```
+
+Ahora la tabla queda como:
+
+```{r}
+table(clase.f)
+```
+
+
+Para acabar, se crea un dataset, `mydata_ann` que contiene las variables explicativas y 4 nuevas variables dummies que servirán para indicar  el tipo de tumor. 
+
+```{r}
+# Create 4 news dummies variables
+mydata_ann <- mydata_nrm
+
+mydata_ann$EWS <- clase.f=="EWS"
+mydata_ann$BL <- clase.f=="BL"
+mydata_ann$NB <- clase.f=="NB"
+mydata_ann$RMS <- clase.f=="RMS"
+
+```
+
+Primero se divide el dataset en una parte de entrenamiento y en otra de test.
+
+```{r}
+################## data spliting
+set.seed(params$seed.train) #fijar la semilla para el generador pseudoaleatorio
+n_train <- params$p.train
+n <- nrow(mydata_ann)
+train <- sample(n,floor(n*n_train))
+mydata_ann.train <- mydata_ann[train,]
+mydata_ann.test  <- mydata_ann[-train,]
+
+```
+
+##Step 3 - Entrenar el modelo con los datos
+
+Ahora vamos a entrenar el primer modelo con los datos de train. Se usa la función `neuralnet` del paquete que tiene el mismo nombre. 
+
+```{r}
+############### libraries loading
+#require(neuralnet)
+
+## Create a formula for a model with a large number of variables:
+xnam <- names(mydata_ann[1:10])
+(fmla <- as.formula(paste("EWS+BL+NB+RMS ~ ",  paste(xnam, collapse= "+"))))
+
+
+# simple ANN with only a single hidden neuron
+set.seed(params$seed.clsfier) # to guarantee repeatable results
+mydata_model <- neuralnet(fmla,
+                          data = mydata_ann.train,
+                          hidden=1)
+
+
+```
+
+La representación de la red neuronal artificial es:
+
+
+```{r, fig.width=5, fig.height=3, fig.align='center'}
+#Representamos gráficamente el modelo generado
+plot(mydata_model, rep="best")
+```
+
+También se puede hacer la representación con otro package
+
+```{r, fig.width=8, fig.height=5, fig.align='center'}
+# ANN representation
+#require(NeuralNetTools)
+
+plotnet(mydata_model, alpha=0.6)
+```
+
+##Step 4 - Evaluación del rendimiento del algoritmo
+
+Una vez obtenido el primer modelo, se evalua su rendimiento con los datos de test. Se debe de clasificar las muestras de los datos de  `test` con la función `compute`. 
+
+```{r}
+# obtain model results
+model_results <- compute(mydata_model, mydata_ann.test[1:10])$net.result
+
+# Put multiple binary output to categorical output
+maxidx <- function(arr) {
+  return(which(arr == max(arr)))
+}
+idx <- apply(model_results, 1, maxidx)
+prediction <- factor(idx,levels=c(1,2,3,4),labels=lab.group )
+res <- table(prediction, clase.f[-train])
+```
+
+Al final, se obtiene la matriz de confusión con las predicciones y las clases reales.  La función `confusionMatrix` del paquete `caret` genera esta matriz y calcula diferentes del rendimiento del algoritmo.
+
+
+```{r}
+#require(caret, quietly = TRUE)
+(conf_matrix<- confusionMatrix(res))
+```
+
+El modelo de ANN de un nodo oculto obtiene un valor de precisión de `r round(conf_matrix$overall["Accuracy"], 2)` y un estadístico $\kappa =$ `r round(conf_matrix$overall["Kappa"], 2)`. Los valores de sensibilidad y especificidad varían según el tipo de tumor, obteniendo como valor medio `r round(mean(conf_matrix$byClass[,1]), 2)` y `r round(mean(conf_matrix$byClass[,2]), 2)` respectivamente.
+
+##Step 5 - Mejora del rendimiento del algoritmo
+
+El primer modelo fue con *un nodo* en la capa oculta. Ahora se plantea *3 nodos* en la capa oculta para tratar de mejorar el rendimiento.
+
+```{r}
+# a more complex neural network topology with 5 hidden neurons
+set.seed(params$seed.clsfier) # to guarantee repeatable results
+mydata_model2 <- neuralnet(fmla,
+                          data = mydata_ann.train,
+                          linear.output = TRUE,
+                          hidden=3)
+
+```
+
+La representación de la red neuronal artificial es:
+
+```{r, fig.width=5, fig.height=3, fig.align='center'}
+# visualize the network topology
+plot(mydata_model2, rep="best")
+
+```
+
+También se puede hacer la representación con otro package
+
+```{r, fig.width=8, fig.height=5, fig.align='center'}
+# ANN representation
+plotnet(mydata_model2, alpha=0.6)
+```
+
+
+El resultado de la matriz de confusión es:
+
+```{r}
+# evaluate the results as we did before
+model_results2 <- compute(mydata_model2, mydata_ann.test[1:10])$net.result
+idx <- apply(model_results2, 1, maxidx)
+prediction2 <- factor(idx,levels=c(1,2,3,4),labels=lab.group )
+#prediction2 <- c('EWS', 'BL',"NB","RMS")[idx]
+res <- table(prediction2, clase.f[-train])
+
+(conf_matrix3<- confusionMatrix(res))
+```
+
+El nuevo modelo de ANN con tres nodos en la capa oculta obtiene un valor de precisión de `r round(conf_matrix3$overall["Accuracy"], 2)` y un estadístico $\kappa =$ `r round(conf_matrix3$overall["Kappa"], 2)`. Los valores de sensibilidad y especificidad varían según el tipo de tumor, obteniendo como valor medio `r round(mean(conf_matrix3$byClass[,1]), 2)` y `r round(mean(conf_matrix3$byClass[,2]), 2)` respectivamente.
+
+En resumen, `r if(conf_matrix3$overall["Accuracy"] > conf_matrix$overall["Accuracy"]){"el nuevo modelo obtenido con tres nodos tiene mayor precisión que el modelo más simple de un solo nodo."}``r if(conf_matrix3$overall["Accuracy"] <= conf_matrix$overall["Accuracy"]){"el nuevo modelo obtenido con tres nodos no mejora la precisión del modelo más simple de un nodo."}` Además,  `r if(conf_matrix3$overall["Kappa"] > conf_matrix$overall["Kappa"]){"el nuevo modelo obtenido con tres nodos tiene mayor valor de kappa que el modelo más simple de un solo nodo."}``r if(conf_matrix3$overall["Kappa"] <= conf_matrix$overall["Kappa"]){"el nuevo modelo obtenido con tres nodos no mejora el valor de kappa del modelo más simple de un nodo."}`
+
+###3-fold crossvalidation
+
+Por ultimo, se plantea realizar el modelo de tres nodos con 3-fold crossvalidation usando el paquete `caret`.
+
+En primer lugar preparo el dataset, con las variables explicativas y la variable respuesta tipo `factor` con 4 clases.
+
+```{r}
+# Create new dataset
+mydata_caret <- mydata
+mydata_caret$clase <- clase.f
+
+```
+
+El modelo de entrenamiento es:
+
+
+```{r}
+###3-fold crossvalidation
+set.seed(params$seed.clsfier) # to guarantee repeatable results
+model <- train(clase ~ ., mydata_caret, method='nnet', 
+               trControl= trainControl(method='cv', number=3), 
+               tuneGrid= NULL, tuneLength=3 ,trace = FALSE)
+
+```
+
+El modelo obtenido es:
+
+```{r}
+model
+```
+El gráfico del rendimiento según diferente parámetros es 
+
+
+```{r, fig.width=6, fig.height=4, fig.align='center'}
+# ANN representation
+plot(model,rep=best)
+```
+
+La representación gráfica es:
+
+
+```{r, fig.width=8, fig.height=5, fig.align='center'}
+# ANN representation
+plotnet(model, alpha=0.6)
+```
+
+Los pesos para cada variable o nodo son:
+
+```{r}
+summary(model)
+```
+
+En resumen, el mejor modelo de ANN con 3-fold crossvalidation de los parametros explorados se obtiene  con `r model$bestTune[["size"]]` nodos ocultos y un valor de _decay_ de `r model$bestTune[["decay"]]`, con el se obtiene una precisión media de `r round(model$results[model$results["size"] == model$bestTune[[1]] & model$results["decay"] == model$bestTune[[2]] , "Accuracy"], 2)` y un estadístico $\kappa$ igual a `r round(model$results[model$results["size"] == model$bestTune[[1]] & model$results["decay"] == model$bestTune[[2]], "Kappa"], 2)`.
+
+Finalmente, podemos decir que `r if(round(model$results[model$results["size"] == model$bestTune[[1]] & model$results["decay"] == model$bestTune[[2]] , "Accuracy"], 2) > conf_matrix$overall[["Accuracy"]]){"el modelo obtenido por 3-fold crossvalidation con la función nnet es el mejor modelo obtenido con una red neuronal."}else{"el modelo obtenido por 3-fold crossvalidation con la función nnet no mejora el mejor modelo obtenido con una red neuronal."}`
+
+
+
+\newpage
+# Algoritmo Support Vector Machine  (SVM)
+
+Las máquinas de vectores de soporte (Support Vector Machines, SVM) son un conjunto de algoritmos de aprendizaje supervisado, dirigido tanto  a la resolución de problemas de clasificación como de regresión, indistintamente. 
+
+Los algoritmos de SVM se basa en buscar el hiperplano que tenga  mayor margen posible y de forma homogénea entre las clases. Formalmente, una SVM construye un hiperplano o conjunto de hiperplanos en un espacio de dimensionalidad muy alta (o incluso infinita) para crear particiones bastante homogéneas a cada lado.
+
+Algunas de las aplicaciones son:
+
+- Clasificar genes diferencialmente expresados a partir de datos de microarrays.
+  
+- Clasificación de texto en distintas categorías temáticas.
+
+- Detección de eventos críticos de escasa frecuencia, como terremotos.
+
+Cuando los datos no son separables de forma lineal, es necesario el uso de kernels, o funciones de similitud y especificar un parámetro C para minimizar la función de coste. La elección de este parámetro es a base de ensayo/error, pero se buscan valores que no sean extremos en la búsqueda del equilibrio sesgo/varianza.
+
+Los kernels más populares son el lineal y el gausiano, aunque hay otros como el polinomial, string kernel, chi-square kernel, etc.
+
+
+| **Fortalezas**    | **Debilidades**  | 
+| ----------------------------------- |:-----------------------------------|
+| - Se puede usar para problemas de clasificación o predicción numérica  | - Encontrar el mejor modelo requiere probar diferentes  kernels y parámetros del modelo (prueba y error)|
+| - Funciona bastante bien con datos ruidosos y no es muy propenso al overfitting |  - Lento de entrenar, sobre todo a medida que aumenta el número de características |
+| - Puede ser más fácil de usar que las redes neuronales, en particular debido a la existencia de varios algoritmos SVM bien soportados  | - Los resultados del modelo son difícil, si no imposible, de interpretar (caja negra) |
+| - Gana popularidad debido a su alta precisión y ganancias de alto perfil en competiciones de minería de datos |  |
+
+
+
+## Step 1 - Recoger los datos
+
+Con el algoritmo _Support Vector Machine_, se usa los datos de 
+expresión génica (microarrays) originales, a diferencia del caso del modelo ANN que se realizo una PCA y limita a las 10 primeras componentes principales como variables explicativas.
+
+```{r, echo=TRUE, eval=FALSE}
+fold <- "dataset"
+
+file1_SVM <- "data.csv"
+file2 <- "class.csv"
+```
+
+
+
+```{r}
+#Leemos los datos
+mydata <- read.csv(file=file.path(params$fold,params$file1_SVM))
+clase <- read.csv(file=file.path(params$fold,params$file2))
+
+dim(mydata)
+```
+
+El primer conjunto de datos denominado *`r params$file1_SVM`* esta formado por `r nrow(mydata)` muestras, entre biopsias de tumores y líneas celulares y tiene la expresión génica de `r ncol(mydata)` genes. 
+
+El segundo conjunto de datos denominado *`r params$file2`* corresponde a la clase de tumor de los anteriores datos.
+
+Se añade la variable clase como factor al conjunto de datos explicativos.
+
+
+```{r}
+#Añadir  clase
+lab.group <- c("EWS","BL","NB","RMS")
+clase.f <- factor(clase$x,labels=lab.group)
+
+mydata$clase <- clase.f
+
+```
+
+
+## Step 2 - Exploración y preparación de los datos
+
+
+En primer lugar veremos una muestra del dataset: los seis primeros registros y las ultimas 9 variables: 
+
+```{r, echo=FALSE}
+mydata[1:6, 2300:2309]
+```
+
+La estructura de los datos es una característica que siempre hay que revisar. En nuestro caso tenemos muchas. A titulo de ejemplo se muestra la estructura de las anteriores 9 variables mostradas.
+
+```{r}
+str(mydata[1:5, 2300:2309])
+```
+
+Una breve estadistica descriptiva de las 9 anteriores variables es:
+
+```{r}
+summary(mydata[, 2300:2309])
+```
+
+
+Entramos en la fase de separar la muestra en train y test. Como en el algoritmo de ANN ya se han separados los individuos solo falta asignar cada dataset al grupo adecuado. 
+
+```{r}
+
+mydata.train <- mydata[train,]
+mydata.test  <- mydata[-train,]
+```
+
+##Step 3 - Entrenar el modelo con los datos
+
+Ahora se entrena modelo SVM lineal con los datos de train. Se usa la función `ksvm` del paquete `kernlab`. 
+
+```{r}
+# begin by training a simple linear SVM
+#library(kernlab)
+set.seed(params$seed.clsfier) # to guarantee repeatable results
+mydata_model1 <- ksvm(clase ~ ., data = mydata.train,
+                      kernel = "vanilladot")
+```
+
+El modelo queda como
+
+```{r}
+# look at basic information about the model
+mydata_model1
+
+```
+
+##Step 4 - Evaluación del rendimiento del algoritmo
+
+Una vez obtenido el modelo de SVM lineal, se evalua su rendimiento con los datos de test. Se debe de clasificar las muestras de los datos de  `test` con la función `predict`. 
+
+```{r}
+# predictions on testing dataset
+mydata_predict1 <- predict(mydata_model1, mydata.test)
+
+res <- table(mydata_predict1, mydata.test$clase)
+```
+
+Al final, se obtiene la matriz de confusión con las predicciones y las clases reales.  La función `confusionMatrix` del paquete `caret` genera esta matriz y calcula diferentes del rendimiento del algoritmo.
+
+```{r}
+#require(caret)
+
+(conf_mat.s1 <- confusionMatrix(res))
+
+```
+
+El algoritmo de SVM lineal tiene un valor de precisión de `r round(conf_mat.s1$overall["Accuracy"], 2)` y un estadístico $\kappa =$ `r round(conf_mat.s1$overall["Kappa"], 2)`. Vemos que los valores de sensibilidad y especificidad varían según el factor, obteniendo como valor medio `r round(mean(conf_mat.s1$byClass[,1]), 2)` y `r round(mean(conf_mat.s1$byClass[,2]), 2)` respectivamente.
+
+##Step 5 - Mejora del rendimiento del algoritmo
+
+El modelo que se presenta es un SVM con función gaussiana o rbf.
+
+
+```{r}
+# begin by training a Gaussian SVM
+#library(kernlab)
+set.seed(params$seed.clsfier) # to guarantee repeatable results
+mydata_model2 <- ksvm(clase ~ ., data = mydata.train,
+                      kernel = "rbfdot")
+```
+
+El modelo queda como
+
+```{r}
+# look at basic information about the model
+mydata_model2
+
+```
+
+
+Una vez obtenido el modelo de SVM lineal, se evalua su rendimiento con los datos de test. Se debe de clasificar las muestras de los datos de  `test` con la función `predict`. 
+
+```{r}
+# predictions on testing dataset
+mydata_predict2 <- predict(mydata_model2, mydata.test)
+
+res <- table(mydata_predict2, mydata.test$clase)
+```
+
+Al final, se obtiene la matriz de confusión con las predicciones y las clases reales.  La función `confusionMatrix` del paquete `caret` genera esta matriz y calcula diferentes del rendimiento del algoritmo.
+
+```{r}
+#require(caret)
+
+(conf_mat.s2 <- confusionMatrix(res))
+
+```
+
+El algoritmo de SVM de función RBF tiene un valor de precisión de `r round(conf_mat.s2$overall["Accuracy"], 2)` y un estadístico $\kappa =$ `r round(conf_mat.s2$overall["Kappa"], 2)`. Como se puede esperar, los valores de sensibilidad y especificidad varían según la clase, obteniendo como valor medio `r round(mean(conf_mat.s2$byClass[,1]), 2)` y `r round(mean(conf_mat.s2$byClass[,2]), 2)` respectivamente. 
+
+En resumen, se puede decir que 
+`r if(conf_mat.s2$overall["Accuracy"] > conf_mat.s1$overall["Accuracy"]){"el modelo SVM con la función RBF obtiene una mayor precisión que el modelo de SVM con función lineal."}``r if(conf_mat.s2$overall["Accuracy"] <= conf_mat.s1$overall["Accuracy"]){"el modelo obtenido con la función RBF no mejora el modelo lineal en cuanto a precisión."}`
+Además,  `r if(conf_mat.s2$overall["Kappa"] > conf_mat.s1$overall["Kappa"]){"el nuevo modelo obtenido de SVM con la función RBF  tiene mayor valor de kappa que el modelo más sencillo de SVM con función lineal."}``r if(conf_mat.s2$overall["Kappa"] <= conf_mat.s1$overall["Kappa"]){"el nuevo modelo obtenido de SVM con la función RBF no mejora el valor de kappa del modelo más sencillo de SVM con la función lineal."}`
+
+###3-fold crossvalidation
+
+Por ultimo, se plantea realizar el algoritmo de SVM con la función lineal con 3-fold crossvalidation usando el paquete `caret`.
+
+El modelo de entrenamiento es:
+
+
+```{r}
+###3-fold crossvalidation
+set.seed(params$seed.clsfier) # to guarantee repeatable results
+model_sc <- train(clase ~ ., mydata, method='svmLinear', 
+               trControl= trainControl(method='cv', number=3), 
+               tuneGrid= NULL, trace = FALSE)
+
+```
+
+El modelo obtenido es:
+
+```{r}
+model_sc
+```
+
+El modelo obtenido con el algoritmo de SVM lineal con 3-fold crossvalidation tiene una precisión de `r round(model_sc$results["Accuracy"],2)` y un valor $\kappa$ de `r round(model_sc$results["Kappa"],2)`. 
+
+Finalmente, podemos decir que
+`r if(model_sc$results["Accuracy"] > conf_mat.s1$overall["Accuracy"]){"el modelo obtenido con la función 'svmLinear' y 3-fold crossvalidation obtiene mayor precisión que el modelo SVM de función lineal con partición train/test ."}else{"el modelo obtenido con la función 'svmLinear' y 3-fold crossvalidation no mejora el valor de precisión del modelo SVM de función lineal con partición train/test."}`
+
+
+
+Además, `r if(model_sc$results["Kappa"] > conf_mat.s1$overall["Kappa"]){"el modelo obtenido con la función 'svmLinear' y 3-fold crossvalidation tiene mayor valor de kappa que el modelo SVM de función lineal con partición train/test ."}else{"el modelo obtenido con la función 'svmLinear' y 3-fold crossvalidation no mejora el valor de kappa del modelo SVM de función lineal con partición train/test."}`
+
+
+#Discusión
+
+
+Para el problema de clasificación de 4 tipos de tumores usando valores de expresión génica se han usando dos de los algoritmos más comunes de _Machine Learning_ : las redes neuronales artificiales (ANN) y las máquinas de vectores de soporte (SVM). Ambos tienen un gran poder de clasificación pero son cajas negras para poder realizar una interpretación del clasificador obtenido. 
+
+En la siguiente tabla se resumen los diferentes modelos obtenidos con su valor de precisión y kappa como medidas del rendimiento del algoritmo para los datos usados.
+
+| **Algoritmo** | **Normalización** | **kernel** | **Parámetro** | **3-fold Crossvalidation** | **Precisión** | **Kappa** |
+|:-------------:|:-----------------:|:----------:|:-------------:|:-------------------:|:-------------:|:---------:|
+| ANN | `normalize` | - | hidden = 1 | NO | `r round(conf_matrix$overall["Accuracy"], 2)` | `r round(conf_matrix$overall["Kappa"], 2)` |
+| ANN | `normalize` | - | hidden = 3 | NO | `r round(conf_matrix3$overall["Accuracy"], 2)` | `r round(conf_matrix3$overall["Kappa"], 2)` |
+| ANN | `normalize` | - | hidden = `r model$bestTune[[1]]` | SI | `r round(model$results[model$results["size"] == model$bestTune[[1]] & model$results["decay"] == model$bestTune[[2]] , "Accuracy"], 2)` | `r round(model$results[model$results["size"] == model$bestTune[[1]] & model$results["decay"] == model$bestTune[[2]] , "Kappa"], 2)` |
+| SVM | - | lineal | C = 1 | NO | `r round(conf_mat.s1$overall["Accuracy"], 2)` | `r round(conf_mat.s1$overall["Kappa"], 2)` |
+| SVM | - | gaussiano | C = 1 | NO | `r round(conf_mat.s2$overall["Accuracy"], 2)` | `r round(conf_mat.s2$overall["Kappa"], 2)` |
+| SVM | - | lineal | C = 1 | SI | `r round(model_sc$results["Accuracy"],2)` | `r round(model_sc$results["Kappa"],2)` |
+
+Como vemos en la tabla, los dos modelos (ANN y SVM) con 3-fold crossvalidation obtienen los mejores resultados, con unos valores de precisión de `r round(model$results[model$results["size"] == model$bestTune[[1]] & model$results["decay"] == model$bestTune[[2]] , "Accuracy"], 2)` y `r round(model_sc$results["Accuracy"],2)`, y un estadístico Kappa de `r round(model$results[model$results["size"] == model$bestTune[[1]] & model$results["decay"] == model$bestTune[[2]] , "Kappa"], 2)` y `r round(model_sc$results["Kappa"],2)` respectivamente.
+
+Un punto importante a considerar es que los dos algoritmos se han entrenado con dos data sets diferentes. El algoritmo SVM se entrenó con los datos de expresión génica obtenida del análisis de microarrays usando 2308 genes. En cambio, el algoritmo de ANN se entrenó con las 10 primeras componentes principales que explicaban un 63% de la varianza original. Este hecho puede influir en el rendimiento menor de los modelos de ANN respecto a los de SVM.
+
+En conclusión, el algoritmo que mejor clasifica los diferentes tumores SRBCTs de los modelos estudiados, con una precisión de `r round(model_sc$results["Accuracy"],2)` y un coeficiente $\kappa$ de `r round(model_sc$results["Kappa"],2)`, es el modelo entrenado por ***Support Vector Machine*** con _kernel_ lineal, parámetro C = 1 y 3-fold Crossvalidation.
+
+#Referencias

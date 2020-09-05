@@ -1,0 +1,2 @@
+data_folder;data_file;seed;trainingSet;trainControlMethod;trainControlMethodRounds;metric;factorConversionRange
+./data/;CTG.csv;12345;0.67;cv;10;Accuracy;5

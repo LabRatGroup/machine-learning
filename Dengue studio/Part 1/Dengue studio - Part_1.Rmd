@@ -1,0 +1,790 @@
+---
+title: 'Minería de datos: PRA1 - Selección y preparación de un juego de datos'
+author: "Autor: Julio M. Fernández Jiménez"
+date: "Abril 2020"
+output:
+  html_document:
+    highlight: default
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
+    includes:
+      in_header: jfernandez74-header.html
+  word_document: default
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+******
+# Introducción
+******
+## Presentación
+Esta práctica cubre de forma transversal la asignatura.
+
+Las Prácticas 1 y 2 de la asignatura se plantean de una forma conjunta de modo que la Práctica 2 será continuación de la 1.
+
+El objetivo global de las dos prácticas consiste en seleccionar uno o varios juegos de datos, realizar las tareas de **preparación y análisis exploratorio** con el objetivo de disponer de datos listos para **aplicar algoritmos** de clustering, asociación y clasificación.
+
+## Competencias
+Las competencias que se trabajan en esta prueba son:  
+
+* Uso y aplicación de las TIC en el ámbito académico y profesional.
+* Capacidad para innovar y generar nuevas ideas.
+* Capacidad para evaluar soluciones tecnológicas y elaborar propuestas de proyectos teniendo en cuenta los recursos, las alternativas disponibles y las condiciones de mercado.
+* Conocer las tecnologías de comunicaciones actuales y emergentes así como saberlas aplicar convenientemente para diseñar y desarrollar soluciones basadas en sistemas y tecnologías de la información.
+* Aplicación de las técnicas específicas de ingeniería del software en las diferentes etapas del ciclo de vida de un proyecto.
+* Capacidad para aplicar las técnicas específicas de tratamiento, almacenamiento y administración de datos.
+* Capacidad para proponer y evaluar diferentes alternativas tecnológicas para resolver un problema concreto.
+
+## Objetivos
+La correcta asimilación de todos los aspectos trabajados durante el semestre.  
+En esta práctica abordamos un caso real de minería de datos donde tenemos que poner en juego todos los conceptos trabajados.
+Hay que trabajar todo el ciclo de vida del proyecto. Desde el objetivo del proyecto hasta la implementación del conocimiento encontrado pasando por la preparación, limpieza de los datos, conocimiento de los datos, generación del modelo, interpretación y evaluación.
+
+## Descripción de la PRA a realizar
+
+## Recursos Básicos
+Material docente proporcionado por la UOC. 
+
+## Criterios de valoración
+
+**Ejercicios prácticos** 
+
+Para todas las PEC es **necesario documentar** en cada apartado del ejercicio práctico que se ha hecho y como se ha hecho.
+
+## Formato y fecha de entrega PRA_1
+El formato de entrega es: usernameestudiant-PRA1.html y RMD  
+Fecha de entrega: 06/05/2020  
+Se debe entregar la PRA_1 en el buzón de entregas del aula  
+
+## Nota: Propiedad intelectual 
+
+> A menudo es inevitable, al producir una obra multimedia, hacer uso de recursos creados por terceras personas. Es por lo tanto comprensible hacerlo en el marco de una práctica de los estudios de Informática, Multimedia y Telecomunicación de la UOC, siempre y cuando esto se documente claramente y no suponga plagio en la práctica. 
+
+> Por lo tanto, al presentar una práctica que haga uso de recursos ajenos, se debe presentar junto con ella un documento en que se detallen todos ellos, especificando el nombre de cada recurso, su autor, el lugar donde se obtuvo y su estatus legal: si la obra esta protegida por el copyright o se acoge a alguna otra licencia de uso (Creative Commons, licencia GNU, GPL ...). 
+El estudiante deberá asegurarse de que la licencia no impide específicamente su uso en el marco de la práctica. En caso de no encontrar la información correspondiente tendrá que asumir que la obra esta protegida por copyright. 
+
+> Deberéis, además, adjuntar los ficheros originales cuando las obras utilizadas sean digitales, y su código fuente si corresponde.  
+
+******
+# Enunciado
+******
+Todo estudio de minería debe nacer de una necesidad de alcanzar un objetivo que nos marcamos y que sólo podremos obtener a través de una colección de buenas prácticas basadas en la Minería de Datos.
+
+El mundo de la minería de datos hemos de contemplar 3 ejes:  
+
+1. Uno de ellos es el profundo **conocimiento** que deberíamos tener **del ámbito de los datos que estamos tratando** al que intentamos dar respuestas. 
+
+2. El otro gran eje es sin duda las **capacidades analíticas** que seamos capaces de desplegar y en este sentido, las dos prácticas de esta asignatura pretenden que el estudiante realice un recorrido sólido por este segundo eje.  
+
+3. El tercer eje son los **Datos**. Llegar al objetivo debe concretarse con preguntas analíticas que a su vez sean viables responder a partir de los datos de que disponemos. La tarea de analizar los datos es sin duda importante, pero la tarea de identificarlos y obtenerlos es para un analista un reto permanente.  
+
+Como **primera parte** del estudio analítico que nos disponemos a realizar, se pide al estudiante que complete los siguientes pasos:   
+
+1. Seleccionar un juego de datos y justificar su elección. El juego de datos deberá tener capacidades para que se le puedan aplicar algoritmos supervisados, algoritmos no supervisados y reglas de asociación. Si el juego de datos no soporta los tres modelos se pueden elegir varios conjuntos de datos, derivar datos nuevos o fusionarlos con otros.  
+
+2. Realizar un análisis exploratorio del juego de datos seleccionado.   
+
+3. Realizar las tareas de limpieza y acondicionado necesarias para poder ser usado en procesos de creación de modelos de minería posteriores.
+
+4. Realizar métodos de discretización
+
+5. Aplicar un estudio PCA sobre el juego de datos. A pesar de no estar explicado en el material didáctico, se valorará si en lugar de PCA investigáis por vuestra cuenta y aplicáis SVD (Single Value Decomposition).
+
+******
+# Solución
+******
+
+## Selección del Conjunto de Datos
+
+Para la elaboración de este ejercicio se ha optado por el conjunto de datos *DengAI: Predicting Disease Spread* (https://www.drivendata.org/competitions/44/dengai-predicting-disease-spread/page/80/).
+
+Los datos contiene información sobre condiciones meteorológicas, densidad de la vegetación, precipitación y temperatura de dos ciudades (San Juan e Iquitos) a través del tiempo. El propósito del estudio es el de predecir el número de casos de dengue hemorrágico por ciudad, año y semana.
+
+El dengue hemorrágico es provocado por el virus del dengue que es propagado por la picadura del mosquito _Aedes aegypti_ que crece en regiones tropicales. Este mosquito prolifera en zonas con agua estancada, generalmente agua de lluvia, y bajo condiciones climatologicas concretas.
+
+Existen múltiples motivaciones para la selección de este conjunto de datos en concreto que a continuación de enumeran.
+
+* Es un conjunto de datos reales que forma parte de un estudio, actualmente vigente, sobre la incidencia de dengue en latino America. Los datos están siendo utilizados en la web *DataDriven* como parte de un concurso de ciencia de datos. El hecho de que los datos estén orientados a un estudio que conlleva aprendizaje de máquina los hace ideales para el propósito de este ejercicio. Al margen de ello, la motivación de trabajar con datos reales —y que forman parte de un estudio real— se hace notar en el desarrollo del ejercicio
+
+* Las muestras están compuestas por datos discretos y continuos. De entre los datos de carácter continuo, existen muchos de ellos que pueden —y deben— discretizarse; aquellos que prevalezcan como datos continuos pueden ser normalizados o incluso eliminados si son redundantes. Como bien puede apreciarse, estos datos permiten realizar multiples acciones sobre ellos, lo que es imprescindible para la adecuada elaboración de este ejercicio.
+
+* Los datos están diseñados para el aprendizaje de máquina y la predicción. Esto implica que contamos con datos clasificados o _training set_ y sin clasificar o _test set_. Aunque el objetivo del concurso del cual se han tomado los datos es bastante extenso, cuando llegue el momento, pueden definirse otros objetivos de menor envergadura y mejor adaptados al material de la asignatura.
+
+* Es posible realizar reglas de asociación sobre ellos. Podemos, por ejemplo, asociar la ciudad y el periodo del año a un cierto grado de incidencias de dengue.
+
+
+El conjunto de datos esta compuesto por tres archivos:
+
+* **dengue_features_train.cvs**: contiene datos por ciudad, año y semana del año.
+
+* **dengue_labels_train.cvs**: contiene el número de casos de dengue  por ciudad, año y semana del año relacionados con el archivo anterior.
+
+* **dengue_features_test.cvs**: contiene datos por ciudad, año y semana del año de los que no conocemos el total de casos de dengue reportados.
+
+Los atributos proporcionados, tanto para el archivo de entrenamiento como para el de test, pueden ser explicados a continuación.
+
+**Datos de situación**
+
+* **city** _(discreto)_: ciudad a la que pertenecen los datos. Puede ser _sj_ para San Juan o _iq_ para Iquitos
+
+* **year** _(numérico)_: año en el cual se recopilaron los datos
+
+* **week_start_date** _(texto)_: día cuando se asume que comienza la semana del año para la cual pertenecen los datos
+
+* **weekofyear** _(numérico)_: la semana del año para la cual pertenecen los datos
+
+
+**Datos satélite de densidad vegetal**
+
+* **ndvi_se** _(numérico)_: Expresa el NDVI de la zona sureste del centro de la ciudad 
+
+* **ndvi_sw** _(numérico)_: Expresa el NDVI de la zona suroeste del centro de la ciudad
+
+* **ndvi_ne** _(numérico)_: Expresa el NDVI de la zona noreste del centro de la ciudad
+
+* **ndvi_sw** _(numérico)_: Expresa el NDVI de la zona noroeste del centro de la ciudad
+
+
+**Datos satélite PERSIANN**
+
+* **precipitation_amt_mm** _(numérico)_: precipitación atmosférica _PERSIANN-CDR_ por metro cuadrado calculada via satélite.
+
+
+**Datos productivos NOAA's NCEP**
+
+* **reanalysis_air_temp_k** _(numérico)_: temperatura media del aire (Kelvin)
+
+* **reanalysis_avg_temp_k** _(numérico)_: temperatura promedio del aire  (Kelvin)
+
+* **reanalysis_dew_point_temp_k** _(numérico)_: temperatura de punto de rocio media  (Kelvin)
+
+* **reanalysis_max_air_temp_k** _(numérico)_: temperatura máxima del aire  (Kelvin)
+
+* **reanalysis_min_air_temp_k** _(numérico)_: temperatura mínima del aire  (Kelvin)
+
+* **reanalysis_precip_amt_kg_per_m2** _(numérico)_: precipitación atmosférica en kg/m2
+
+* **reanalysis_relative_humidity_percent** _(numérico)_: humedad relativa media
+
+* **reanalysis_sat_precip_amt_mm** _(numérico)_: precipitación atmosférica por m2
+
+* **reanalysis_specific_humidity_g_per_kg** _(numérico)_: humedad especifica media
+
+* **reanalysis_tdtr_k** _(numérico)_: rango de temperatura diurna  (Kelvin)
+
+
+**Datos históricos NOAA's GHCN**
+
+* **station_avg_temp_c** _(numérico)_: temperatura promedio (Celsius)
+
+* **station_diur_temp_rng_c** _(numérico)_:  rango de temperatura diurna (Celsius)
+
+* **station_max_temp_c** _(numérico)_: temperatura máxima (Celsius)
+
+* **station_min_temp_c** _(numérico)_: temperatura máxima (Celsius)
+
+* **station_precip_mm** _(numérico)_: precipitación por metro cuadrado
+
+* **total_cases** _(numérico)_: número de casos detectados para una ciudad, año y semana concreta.
+
+Los datos seleccionados para el proyecto ofrecen una gran cantidad de opciones que sin duda satisfacen los requisitos del mismo. A continuación enumeramos algunas de las tareas a realizar más relevantes.
+
+* Durante la limpieza de los datos se deberá realizar una cribado de los mismos para reducir la **redundancia** de información.
+
+* Se deberá también eliminar aquellos datos que puedan incurrir en un cierto nivel de correlación. Esta causística parece ser común entre los datos de una misma categoría, como por ejemplo el punto de rocío y la humedad del aire o la temperatura media y promedio.
+
+* También es necesario tratar aquellos datos nulos o no existentes.
+
+* También será necesario unificar las unidades de medidas en el caso de que optemos por hacer uso de datos provenientes de diferentes fuentes, como ocurre con la temperatura, que se ofrece en Kelvin y Celsius. 
+
+* La discretización de los datos deberá realizarse sobre los datos que clasifican las entradas (casos de dengue). Es necesario crear valores discretos que permitan una óptima ejecución de los algoritmos de _clustering_. De igual modo, se deberán generar atributos discretizados adicionales que permitan la elaboración de asociaciones.
+
+* Dada la gran cantidad de datos numéricos con los que contamos, se deberán realizar normalizaciones para optimizar los procesos de _clustering_
+
+* Por último, los datos de archivo de entrenamiento y clases deben unificarse en un sólo _dataframe_. 
+
+* Se recomienda también generar una especie de clave primaria única que resuma la actual clave compuesta por la ciudad, año y semana del año.
+
+## Análisis preliminar de los datos
+
+Procedemos con el análisis preliminar de los datos con la intención de tomar decisiones sobre como debemos tratarlo. Comenzaremos visualizando los datos por archivo. Es importante comentar que aunque contamos con tres archivos, sólo trabajaremos con los datos de entrenamiento y la clasificación de éstos.
+
+**dengue_features_train.cvs**
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_features_train <- read.csv('dengue_features_train.csv',stringsAsFactors = FALSE)
+summary(dengue_features_train)
+```
+
+**dengue_labels_train.cvs**
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_labels_train <- read.csv('dengue_labels_train.csv',stringsAsFactors = FALSE)
+summary(dengue_labels_train)
+```
+
+Estudiamos la composición de los tipos de datos, que concuerda con los descrito anteriormente.
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+str(dengue_features_train)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+str(dengue_labels_train)
+```
+
+Existen valores NA en nuestro conjunto de datos de entrenamiento, aunque no en las etiquetas. El tratamiento de éstos se realizará de forma progresiva a lo largo del ejercicio de tratamiento de datos por categoría de datos.
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+colSums(is.na(dengue_features_train))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+colSums(dengue_features_train=="")
+```
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+colSums(is.na(dengue_labels_train))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+colSums(dengue_labels_train=="")
+```
+
+Creamos un _dataset_ nuevo para ir construyendo nuestro nuevo conjunto de datos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data <- dengue_features_train
+```
+
+Trabajaremos ahora con la limpieza de los datos por categoría.
+
+### Selección y tratamiento de datos de localización
+
+Los campos relacionados con la localización son:
+
+* **city** _(discreto)_
+
+* **year** _(numérico)_
+
+* **week_start_date** _(texto)_
+
+* **weekofyear** _(numérico)_
+
+De todos estos nos interesan los datos de la ciudad, el año y la semana del año. El dato relevante a el día que corresponde al inicio de la semana será descartado ya que se considera redundante al ya contar con la semana del año.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data <- dengue_data[-4]
+summary(dengue_data[,1:4])
+```
+
+Añadimos una columna que denote la clave primaria o ID único del dato.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(tibble)
+
+ids <- data.frame('ID' = 1:nrow(dengue_data))
+dengue_data <- add_column(dengue_data, ids, .before = 1)
+summary(dengue_data[,1:4])
+```
+
+Ahora vamos a discretizar la columna _weekofyear_ para que represente trimestres. Podríamos optar por utilizar estaciones del año, pero en las zona estudiadas no existe una diferencia climática marcada que merezca la pena analizar, de todos modos, una división trimestral puede perfectamente representar estaciones climáticas. Es también más sencillo dividir las semanas en trimestres que en estaciones. Conservaremos también la semana del año como dato continuo.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library('arules')
+
+trimester <- data.frame('trimester' = discretize(dengue_data$weekofyear, method="interval", breaks=4, labels=c("T1", "T2", "T3", "T4")))
+dengue_data <- add_column(dengue_data, trimester, .after = 4)
+summary(dengue_data[,1:5])
+```
+
+### Selección y tratamiento de datos de densidad vegetal
+
+Los campos relacionados con la densidad vegetal son:
+
+* **ndvi_ne** _(numérico)_
+
+* **ndvi_nw** _(numérico)_
+
+* **ndvi_se** _(numérico)_
+
+* **ndvi_sw** _(numérico)_
+
+La vegetación viene dada en lo que denominamos NDVI o _normalized difference vegetation index_. Es una medida de la cantidad de vegetación detectada via satélite de una zona del planeta. El valor del NDVI oscila entre -1 y 1, siendo -1 valores que indican agua y 1 vegetación de alta densidad; un valor de cero puedo indicar una zona urbanizada. En nuestros datos, contamos con datos recogidos en cuatro zonas diferentes de la ciudad, más concretamente en las esquinas de un cuadrado imaginario cuyo centroide es el corazón de la cuidad.
+
+Estos datos están incompletos ya que existen valores no definidos o NA. Con la finalidad de resolver el problema de los datos no existentes, y a la vez simplificarlos, vamos a optar por resumir el valor de los atributos existentes en uno único atributo resultado del promedio de los demás. Eliminaremos también las columnas individuales relacionadas con el NDVI. Como bien puede apreciarse en el método que calcula el promedio, éste se hace sobre el total de datos existentes por fila en el _dataframe_ ignorando los valores NA.
+
+Para completar el refinamiento de esta nueva variable, vamos también a normalizarla en una escala de cero a uno.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+calculate_global_ndvi <- function(x) {
+  ndvi_c = c(x["ndvi_ne"], x["ndvi_nw"], x["ndvi_se"], x["ndvi_sw"])
+  
+  items = 0
+  total = 0
+  
+  for(i in 1:length(ndvi_c)) {
+    if(!is.na(ndvi_c[i])) {
+      items = items + 1
+      total = total + as.numeric(ndvi_c[i])
+    }
+  }
+  
+  if(items == 0) {
+    return (items)
+  }
+  
+  return (total/items)
+}
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$ndvi <- apply(dengue_data,1,calculate_global_ndvi)
+ndvi <- as.data.frame(apply(dengue_data[ncol(dengue_data)], 2, normalize))
+
+dengue_data$ndvi_ne <- NULL
+dengue_data$ndvi_nw <- NULL
+dengue_data$ndvi_se <- NULL
+dengue_data$ndvi_sw <- NULL
+dengue_data$ndvi <- NULL
+
+dengue_data <- add_column(dengue_data, ndvi, .after = 5)
+
+summary(dengue_data[1:6])
+```
+### Selección y tratamiento de datos de precipitación
+
+Los campos relacionados con la precipitación son:
+
+* **station_precip_mm** _(numérico)_ : GHCN data
+
+* **precipitation_amt_mm** _(numérico)_: PERSIANN data
+
+* **reanalysis_sat_precip_amt_mm** _(numérico)_: NCEP data
+
+* **reanalysis_precip_amt_kg_per_m2** _(numérico)_: NCEP data
+
+Los datos sobre la precipitación provienen de tres fuentes diferentes, siendo dos de ellos datos de la misma fuente.
+
+A continuación, vamos a comparar los valores de las cuatro variables que definen la precipitación con el fin de observar si la información provista por las diferentes fuentes difiere mucho entre ellas. El objetivo de este ejercicio es el de seleccionar la mejor fuente de información sobre la precipitación.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+boxplot(
+  dengue_data$precipitation_amt_mm,
+  dengue_data$station_precip_mm,
+  dengue_data$reanalysis_sat_precip_amt_mm,
+  dengue_data$reanalysis_precip_amt_kg_per_m2,
+  main = "Comparativa de medidas de Precipitación",
+  names = c("PERSIANN", "GHCN", "NCEP", "NCEP kg"),
+  xlab = "Fuente",
+  ylab = "Precicipación",
+  col = "orange",
+  border = "brown",
+  horizontal = FALSE,
+  notch = TRUE
+  )
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(dengue_data$precipitation_amt_mm)
+summary(dengue_data$station_precip_mm)
+summary(dengue_data$reanalysis_sat_precip_amt_mm)
+summary(dengue_data$reanalysis_precip_amt_kg_per_m2)
+```
+
+Del Box-Plot podemos observar que los datos provistos pueden agruparte en dos: aquellos con precipitación de hasta los 390mm con media de ~46mm y los que llegan hasta los 543-570mm con una media de ~40mm.
+
+De todas ellas vamos a optar por _reanalysis_sat_precip_amt_mm_. No solamente es de las que menos valores NA tiene, sino que es la que tiene los datos mejor agrupados y con menos _outliners_. En general sus datos esta bien distribuidos. No hemos querido optar por los datos de PERSIANN por ser la única fuente de datos que sólo ofrece información sobre un elemento meteorologico aislado. De todos modos, los valores de PERSIANN son prácticamente los mismos que los escogidos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$precipitation_amt_mm <- NULL
+dengue_data$station_precip_mm <- NULL
+dengue_data$reanalysis_precip_amt_kg_per_m2 <- NULL
+```
+
+Antes de normalizar y formalizar el campo de precipitación, debemos encargarnos del tratamiento de los valores NA. Para ello vamos a reemplazar los campos NA con la media de todos los valores existentes.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$reanalysis_sat_precip_amt_mm[is.na(dengue_data$reanalysis_sat_precip_amt_mm)] <- mean(dengue_data$reanalysis_sat_precip_amt_mm, na.rm=TRUE)
+summary(dengue_data$reanalysis_sat_precip_amt_mm)
+```
+
+A continuación vamos a proceder con la normalización de los datos de precipitación y el renombramiento del campo _reanalysis_sat_precip_amt_mm_ a algo más genérico. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$precipitation <- dengue_data$reanalysis_sat_precip_amt_mm
+precipitation <- as.data.frame(apply(dengue_data[which( colnames(dengue_data)=="precipitation" )], 2, normalize))
+dengue_data$reanalysis_sat_precip_amt_mm <- NULL
+dengue_data$precipitation <- NULL
+
+dengue_data <- add_column(dengue_data, precipitation, .after = 6)
+summary(dengue_data[1:7])
+```
+
+### Selección y tratamiento de datos de temperatura
+
+Los campos relacionados con la temperatura son:
+
+* **station_max_temp_c** _(numérico)_ : GHCN data
+
+* **station_min_temp_c** _(numérico)_ : GHCN data
+
+* **station_avg_temp_c** _(numérico)_ : GHCN data
+
+* **station_diur_temp_rng_c** _(numérico)_ : GHCN data
+
+* **reanalysis_dew_point_temp_k** _(numérico)_: NCEP data
+
+* **reanalysis_air_temp_k** _(numérico)_: NCEP data
+
+* **reanalysis_max_air_temp_k** _(numérico)_: NCEP data
+
+* **reanalysis_min_air_temp_k** _(numérico)_: NCEP data
+
+* **reanalysis_avg_temp_k** _(numérico)_: NCEP data
+
+* **reanalysis_tdtr_k** _(numérico)_: NCEP data
+
+Eliminamos todos los campos que describan la temperatura mínima y máxima, ya que nos es suficiente con saber la temperatura media o promedio de la semana. Esta acción no implica que esos datos no sean relevantes, pero su eliminación ayudará a reducir la cantidad de datos de forma significativa. De igual modo, el propósito de las temperaturas promedios o medias y las máximas y mínimas es básicamente el mismo, esto es, el de proveer una medida objetiva de la temperatura semanal por ciudad.
+
+Eliminamos también la temperatura de rocío, ya que existe correlación entre ésta y los datos de humedad que trataremos más adelante.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$station_max_temp_c <- NULL
+dengue_data$station_min_temp_c <- NULL
+dengue_data$reanalysis_max_air_temp_k <- NULL
+dengue_data$reanalysis_min_air_temp_k <- NULL
+dengue_data$reanalysis_dew_point_temp_k <- NULL
+```
+
+En este momento, contamos con los siguientes campos:
+
+* **station_avg_temp_c** _(numérico)_ : GHCN data
+
+* **station_diur_temp_rng_c** _(numérico)_ : GHCN data
+
+* **reanalysis_air_temp_k** _(numérico)_: NCEP data
+
+* **reanalysis_avg_temp_k** _(numérico)_: NCEP data
+
+* **reanalysis_tdtr_k** _(numérico)_: NCEP data
+
+Vamos a conservar un dato relacionado con el rango en la temperatura diurna y otro que represente la temperatura media o promedio de la semana. Para determinar que datos queremos conservar, vamos a proceder con una comparación similar a la que realizamos con los datos de precipitación. Inicialmente, vamos a asumir que la media es aritmética e incluiremos los datos de las medias junto con los promedios en las comparaciones. Antes de comparar los datos, convertiremos aquellos en la escala Celsius a Kelvin.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+c_to_k <- function(x) {
+  return (x+273.15)
+}
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$station_avg_temp_k <- dengue_data$station_avg_temp_c
+
+station_avg_temp_k <-as.data.frame(apply(dengue_data[which( colnames(dengue_data)=="station_avg_temp_k" )], 2, c_to_k))
+
+dengue_data$station_avg_temp_k <- NULL
+dengue_data$station_avg_temp_c <- NULL
+
+dengue_data <- add_column(dengue_data, station_avg_temp_k)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+boxplot(
+  dengue_data$station_avg_temp_k,
+  dengue_data$reanalysis_air_temp_k,
+  dengue_data$reanalysis_avg_temp_k,
+  main = "Comparativa Temperatura",
+  names = c("GHCN", "NCEP media", "NCEP avrg."),
+  xlab = "Fuente",
+  ylab = "Temperatura",
+  col = "orange",
+  border = "brown",
+  horizontal = FALSE,
+  notch = TRUE
+  )
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(dengue_data$station_avg_temp_k)
+summary(dengue_data$reanalysis_air_temp_k)
+summary(dengue_data$reanalysis_avg_temp_k)
+```
+
+Las cajas muestran valores muy semejantes entre las tres medidas. Los datos de GHCN muestran mayor dispersión y además contienen más valores NA que los otros (43), por lo que serán descartados. De los otros dos valores, podemos observar que los datos de la media esta más equilibrados y contienen solamente 10 NA. Vamos pues a optar por _reanalysis_air_temp_k_.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$station_avg_temp_k <- NULL
+dengue_data$reanalysis_avg_temp_k <- NULL
+```
+
+Reemplazamos los valores NA con la media de los existente
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$reanalysis_air_temp_k[is.na(dengue_data$reanalysis_air_temp_k)] <- mean(dengue_data$reanalysis_air_temp_k, na.rm=TRUE)
+summary(dengue_data$reanalysis_air_temp_k)
+```
+
+Normalizamos e introducimos los valores de la temperatura media en nuestro conjunto de datos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$air_temp_mean <- dengue_data$reanalysis_air_temp_k
+air_temp_mean <- as.data.frame(apply(dengue_data[which( colnames(dengue_data)=="air_temp_mean" )], 2, normalize))
+dengue_data$air_temp_mean <- NULL
+dengue_data$reanalysis_air_temp_k <- NULL
+
+dengue_data <- add_column(dengue_data, air_temp_mean, .after = 7)
+summary(dengue_data[1:8]) 
+```
+
+Repetimos el procedimiento con el rango te temperatura diurna pero sin conversión de medidas ya que estamos trabajando con rangos cuyas magnitudes no son un factor la una de la otra.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+boxplot(
+  dengue_data$station_diur_temp_rng_c,
+  dengue_data$reanalysis_tdtr_k,
+  main = "Comparativa Temperatura",
+  names = c("GHCN", "NCEP"),
+  xlab = "Fuente",
+  ylab = "Temperatura",
+  col = "orange",
+  border = "brown",
+  horizontal = FALSE,
+  notch = TRUE
+  )
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(dengue_data$station_diur_temp_rng_c)
+summary(dengue_data$reanalysis_tdtr_k)
+```
+
+Aquí vamos a optar por el uso de _reanalysis_tdtr_k_ que contiene menos valores NA.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$station_diur_temp_rng_c <- NULL
+```
+
+Reemplazamos los valores NA por la media.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$reanalysis_tdtr_k[is.na(dengue_data$reanalysis_tdtr_k)] <- mean(dengue_data$reanalysis_tdtr_k, na.rm=TRUE)
+summary(dengue_data$reanalysis_tdtr_k)
+```
+
+Normalizamos e introducimos los valores de rango de temperatura diurna en nuestro conjunto de datos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$diur_temp_range <- dengue_data$reanalysis_tdtr_k
+diur_temp_range <- as.data.frame(apply(dengue_data[which(colnames(dengue_data)=="diur_temp_range" )], 2, normalize))
+dengue_data$diur_temp_range <- NULL
+dengue_data$reanalysis_tdtr_k <- NULL
+
+dengue_data <- add_column(dengue_data, diur_temp_range, .after = 8)
+summary(dengue_data[1:9]) 
+```
+
+### Selección y tratamiento de datos de humedad 
+
+Los campos relacionados con la humedad son:
+
+* **reanalysis_specific_humidity_g_per_kg** _(numérico)_ : NCEP data
+
+* **reanalysis_relative_humidity_percent** _(numérico)_ : NCEP data
+
+La humedad especifica es un factor meteorológico ampliamente usado que expresa la proporción de masa de vapor de agua en el aire en relación al aire seco en el mismo espacio de aire. A medida que la temperatura disminuye también lo hace la cantidad de vapor necesaria para alcanza la saturación. Esta medida tiene un cierto nivel de correlación con la temperatura del aire (temperatura de rocío). Está expresada en gramos de agua por kilogramos de aire.
+
+La humedad relativa define la relación entre la cantidad de vapor de agua en la atmósfera y la capacidad de ésta de acumular vapor de agua. La humedad relativa es un porcentaje; un porcentaje alto implica que la mezcla de aire y agua es más húmeda. Es una medida de precipitación, por lo que está en cierto modo correlacionada con esa medida.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(dengue_data$reanalysis_relative_humidity_percent)
+summary(dengue_data$reanalysis_specific_humidity_g_per_kg)
+```
+
+Dado que ambos datos expresan la humedad desde diferentes perspectivas, y ambos poseen el mismo numero de NA, vamos a seleccionar como indicador de humedad _reanalysis_specific_humidity_g_per_kg_, ya que es la medida mas comúnmente utilizada por meteorólogos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$reanalysis_relative_humidity_percent <- NULL
+```
+
+Reemplazamos los valores NA por la media.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$reanalysis_specific_humidity_g_per_kg[is.na(dengue_data$reanalysis_specific_humidity_g_per_kg)] <- mean(dengue_data$reanalysis_specific_humidity_g_per_kg, na.rm=TRUE)
+summary(dengue_data$reanalysis_specific_humidity_g_per_kg)
+```
+
+Normalizamos e introducimos los valores de rango de humedad en nuestro conjunto de datos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$humidity <- dengue_data$reanalysis_specific_humidity_g_per_kg
+humidity <- as.data.frame(apply(dengue_data[which(colnames(dengue_data)=="humidity" )], 2, normalize))
+dengue_data$reanalysis_specific_humidity_g_per_kg <- NULL
+dengue_data$humidity <- NULL
+
+dengue_data <- add_column(dengue_data, humidity, .after = 9)
+summary(dengue_data[1:10]) 
+```
+
+### Tratamiento de datos de casos reportados o enfermos
+
+Por último, vamos a añadir los datos resultantes del estudio a nuestro conjunto de datos. Este paso permitirá realizar análisis de aprendizaje supervisado. 
+
+Para poder trabajar con _clusters_ vamos a proceder con la discretización de los casos reportados. Realízamos un Blox-Plot para estudiar la estructuración de los datos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+boxplot(
+  dengue_labels_train$total_cases,
+  main = "Casos Reportados",
+  ylab = "Total Casos",
+  col = "orange",
+  border = "brown",
+  horizontal = FALSE,
+  notch = TRUE
+  )
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+summary(dengue_labels_train$total_cases)
+```
+
+Como podemos observar, hay un bajo nivel de agrupación y muchos _outliners_, lo que puede ser señal de que los casos suelen ser escasos con repuntadas concretas en el tiempo bajo ciertas condiciones.
+
+Vamos a estudiar diferentes forma de discretizar los resultados. Por frecuencia y en grupos de 2, 3 y 4 intervalos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+cases_frecuencia <- data.frame('cases' = discretize(dengue_labels_train$total_cases,method="frequency"))
+cases_intervalos_2 <- data.frame('cases' = discretize(dengue_labels_train$total_cases,method="interval", breaks=2))
+cases_intervalos_3 <- data.frame('cases' = discretize(dengue_labels_train$total_cases,method="interval", breaks=3))
+cases_intervalos_4 <- data.frame('cases' = discretize(dengue_labels_train$total_cases,method="interval", breaks=4))
+
+summary(cases_frecuencia)
+summary(cases_intervalos_2)
+summary(cases_intervalos_3)
+summary(cases_intervalos_4)
+```
+
+La discretización por frecuencia divide el conjunto de resultados de forma muy dispareja, donde los dos primeros grupos están poco diferenciados entre si. No sería objetivo tener un grupo de 6 a 21 enfermos por semana y otro 21 a 461.
+
+Dentro de los grupos de discretización por intervalo, en todos los casos ocurre que la mayoría de los casos se concentran en la zona baja de infectados (como bien muestra el Blox-Plot).
+
+Optamos pues por hacer uso de la discretización por intervalos de tres grupos, ya que de este modo podemos clasificar los datos en tres _clusters_ que tienen sentido desde un punto de vista epidemiológico (_low_, _moderate_ y _severe_). También podemos decir que es el único grupo que muestra una diferencia relativamente significativa en entre los intervalos más extremos: 10 y 15 en contraste con 7 y 8 para el de cuatro intervalos.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data$total_cases <- dengue_labels_train$total_cases
+cases <- data.frame('cases' = discretize(dengue_data$total_cases,method="interval", breaks=3, labels=c('low', 'moderate', 'severe')))
+dengue_data <- add_column(dengue_data, cases, .after = 11)
+write.csv(dengue_data, "dengue_data_final.csv")
+summary(dengue_data)
+```
+
+### Análisis Gráfico
+
+Vamos a brevemente comparar los datos obtenidos en relación al número de casos reportados por semana.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(ggplot2)
+
+ggplot(dengue_data,aes(x=dengue_data$city, y=dengue_data$total_cases)) +  geom_point(color='darkblue') + labs(x="Ciudad", y="Casos") + theme_linedraw()
+ggplot(dengue_data,aes(x=dengue_data$year, y=dengue_data$total_cases)) +  geom_point(color='darkblue') + labs(x="Año", y="Casos") + theme_linedraw()
+ggplot(dengue_data,aes(x=dengue_data$weekofyear, y=dengue_data$total_cases)) +  geom_point(color='darkblue') + labs(x="Semana", y="Casos") + theme_linedraw()
+ggplot(dengue_data,aes(x=dengue_data$trimester, y=dengue_data$total_cases)) +  geom_point(color='darkblue') + labs(x="Trimestre", y="Casos") + theme_linedraw()
+ggplot(dengue_data,aes(x=dengue_data$ndvi, y=dengue_data$total_cases)) +  geom_point(color='darkblue') + labs(x="Vegetación", y="Casos") + theme_linedraw()
+ggplot(dengue_data,aes(x=dengue_data$precipitation, y=dengue_data$total_cases)) +  geom_point(color='darkblue') + labs(x="Precipitación", y="Casos") + theme_linedraw()
+ggplot(dengue_data,aes(x=dengue_data$air_temp_mean, y=dengue_data$total_cases)) +  geom_point(color='darkblue') + labs(x="Temperatura Media", y="Casos") + theme_linedraw()
+ggplot(dengue_data,aes(x=dengue_data$diur_temp_range, y=dengue_data$total_cases)) +  geom_point(color='darkblue') + labs(x="Rango Temperatura Diurna", y="Casos") + theme_linedraw()
+ggplot(dengue_data,aes(x=dengue_data$humidity, y=dengue_data$total_cases)) +  geom_point(color='darkblue') + labs(x="Humedad", y="Casos") + theme_linedraw()
+
+```
+
+De los gráficos generados podemos comentar las siguientes observaciones:
+
+* Existe una incidencia mayor de dengue en San Juan que en Iquitos
+
+* Se registraron más casos en el año 1994 con repuntes en 1998 y 2007, aunque la tendencia es a la baja
+
+* Los casos repuntan a final de año, cuando llegan las lluvias, lo que es indicativo de que existe más agua estancada. Es el agua estancada lo que provoca la procreación del mosquito que transmite el dengue
+
+* Hay más proliferación en zonas con una vegetación baja y probablemente urbanizadas.
+
+* El exceso de precipitación impide la proliferación de mosquito. Es necesario que exista agua estancada pero que cese la lluvia
+
+* Las temperaturas altas moderadas denotan un repunte de casos
+
+* Las mañanas frías reducen el índice de casos
+
+* El mosquito es más prolifero en humedad media
+
+### Análisis PCA
+
+El PCA o _Principal Component Analysis_ es una técnica de exploración de datos que nos permite analizar la información contenida en conjuntos de datos de muchas variables.
+
+PCA realiza un modelo alternativo, y más simplificado, de nuestros datos en el que es posible detectar cuáles son las variables más influyentes de nuestra clase
+
+Para realizar el estudio PCA, vamos a utilizar todas las variables de carácter meteorológico e ignorar las temporales y de localización tales como cuidad, año, trimestre y semana del año. En el caso de la variable que señala la semana de año, que seria nuestra variable temporal constante a través de los años, la obviamos porque entendemos que está correlacionada con las demás variables meteorológicas, es decir, que las variables meteorológicas cambian a los largo del año según la estación (o el periodo de huracanes para zonas tropicales). Las demás variables, como lo son localización y año, se consideran discretas y serán por ende ignoradas en el estudio PCA.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dengue_data.pca <- prcomp(dengue_data[,c(6:10)], center = TRUE, scale. = TRUE)
+summary(dengue_data.pca)
+```
+
+Podemos observar que la vegetación es la variable con mas peso de las seleccionadas, seguidas de la precipitación y la temperatura. Esto indica que son estas tres variables las que definen principalmente el modelo.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(devtools)
+install_github("vqv/ggbiplot")
+library(ggbiplot)
+```
+
+A continuación, vamos a representar la intersección de las dos variables más relevantes en relación a los casos diagnosticados.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggbiplot(dengue_data.pca,ellipse=TRUE, obs.scale = 1, var.scale = 1,  groups=dengue_data$cases, alpha = 0)
+```
+
+En el gráfico podemos observar que el factor de la temperatura influye en semanas con más casos de dengue en zonas urbanizadas de poca vegetaciòn y bajas precipitaciones. Un repunte moderado de precipitaciones hace que el nivel de contagios se dispare a la zona se mayor severidad.
+
+******
+# Recursos
+******
+
+(1) **DengAI: Predicting Disease Spread** - https://www.drivendata.org/competitions/44/dengai-predicting-disease-spread/page/80/
+(2) **Climate Data Record Program** - https://www.ncdc.noaa.gov/cdr
+(3) **What is NDVI (Normalized Difference Vegetation Index)?** - https://gisgeography.com/ndvi-normalized-difference-vegetation-index/
+(4) **PERSIANN-CDR: PRECIPITATION ESTIMATION FROM REMOTELY SENSED INFORMATION USING ARTIFICIAL NEURAL NETWORKS - CLIMATE DATA RECORD** - https://climatedataguide.ucar.edu/climate-data/persiann-cdr-precipitation-estimation-remotely-sensed-information-using-artificial
+(5) **Global Historical Climatology Network (GHCN)** - https://www.ncdc.noaa.gov/data-access/land-based-station-data/land-based-datasets/global-historical-climatology-network-ghcn
+(6) **Tutorial on the R Apply Family** - https://www.datacamp.com/community/tutorials/r-tutorial-apply-family
+(7) **Observation of rainfall** - http://www.bom.gov.au/climate/cdo/about/rain-measure.shtml
+(8) **Humidity** - https://en.wikipedia.org/wiki/Humidity#Relative_humidity
+(9) **The Difference Between Absolute, Relative, and Specific Humidity** - https://www.eva-dry.com/humidity-difference-absolute-relative-specific/
+(10) **The R Graph Gallery** -  https://www.r-graph-gallery.com/
+(11) **Principal Component Analysis in R** -  https://www.datacamp.com/community/tutorials/pca-analysis-r
+(12) **Dengue* - https://es.wikipedia.org/wiki/Dengue
+
+******
+# Rúbrica
+******
+* 20%. Justificación razonada y completa de la elección del juego de datos donde se detalla el potencial analítico que se intuye y que se podrán crear los modelos solicitados. El estudiante deberá visitar los siguientes portales -o otros que desee- de datos abiertos para seleccionar su juego de datos:
+
+  + [Datos.gob.es](https://datos.gob.es/es/catalogo?q=&frequency=%7B"type"%3A+"months"%2C+"value"%3A+"1"%7D&sort=score+desc%2C+metadata_modified+desc)
+  + [UCI Machine Learning](https://archive.ics.uci.edu/ml/datasets.php)
+  + [Datasets Wikipedia](https://en.wikipedia.org/wiki/List_of_datasets_for_machine-learning_research)
+  + [Datos abierto Madrid](https://datos.madrid.es/portal/site/egob/)
+  + [Datos abiertos Barcelona](https://opendata-ajuntament.barcelona.cat/ca/)
+  + [London Datastore](https://data.london.gov.uk/)
+  + [NYC OpenData](https://opendata.cityofnewyork.us/)
+  
+* 25%. Redactar de forma clara y completa la información extraída del análisis exploratorio. Distribuciones, correlaciones, anomalías, ... ¿Qué se quiere obtener? Cómo se hace? ¿Qué se obtiene? Como se interpreta?
+
+* 25%. Explicación clara de cualquier tarea de limpieza o acondicionado que se realiza. Justificando el motivo y mencionando las ventajas de la acción tomada.
+
+* 25%. Realizar la discretización de los datos que lo requieran utilizando los diversos métodos vistos y justificando su elección.
+
+*  5%. Se realiza un proceso de PCA o SVD donde se aprecia mediante explicaciones y comentarios que el estudiante entiende todos los pasos y se comenta extensamente el resultado final obtenido.
+
+
+
